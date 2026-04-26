@@ -1,73 +1,274 @@
-<div align='center'>
-    <picture>
-        <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/filipnaudot/llmSHAP/main/docs/_static/llmSHAP-logo-lightmode.png">
-        <img alt="llmSHAP logo" src="https://raw.githubusercontent.com/filipnaudot/llmSHAP/main/docs/_static/llmSHAP-logo-darkmode.png" width="50%" height="50%">
-    </picture>
-</div>
-<br/>
+# Ghost Test Catcher
 
-![Unit Tests](https://github.com/filipnaudot/llmSHAP/actions/workflows/test.yml/badge.svg)
-[![Documentation](https://img.shields.io/badge/docs-online-blue.svg)](https://filipnaudot.github.io/llmSHAP/)
-[![PyPI Downloads](https://static.pepy.tech/personalized-badge/llmshap?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=GREEN&left_text=PyPI+downloads)](https://pepy.tech/projects/llmshap)
+Ghost Test Catcher is a proof-of-concept trust layer for AI-generated software tests.
 
-A multi-threaded explainability framework using Shapley values for LLM-based outputs.
+Instead of only asking an LLM to write tests, this project checks whether those tests are actually supported by the uploaded source files, whether they run in `pytest`, and whether they look like useful tests or ghost tests.
 
+## What It Does
 
-<p align="center">
-  <picture>
-    <source
-      srcset="docs/_static/contribution-illustration-darkmode.png"
-      media="(prefers-color-scheme: dark)" />
-    <source
-      srcset="docs/_static/contribution-illustration-lightmode.png"
-      media="(prefers-color-scheme: light)" />
-    <img
-      src="docs/_static/contribution-illustration-lightmode.png"
-      alt="llmSHAP contribution illustration"
-      width="70%"/>
-  </picture>
-</p>
+Given a small set of uploaded files, the app:
 
+1. builds a prompt for test generation,
+2. gives the LLM an API map of the uploaded Python files,
+3. generates tests,
+4. uses llmSHAP-style attribution to see which files influenced the output,
+5. checks groundedness and context relevance,
+6. runs the generated tests in `pytest`,
+7. returns a trust-oriented verdict.
 
-## Getting Started
-Install the `llmshap` package (with all optional dependencies):
-```bash
-pip install "llmshap[all]"
+The main idea is simple:
+
+> Passing tests are not enough.  
+> We also want to know whether those tests are actually grounded in the code they claim to test.
+
+## Why This Exists
+
+AI coding tools can generate plausible-looking tests that:
+
+- reference symbols that do not exist,
+- assume workflows the codebase does not implement,
+- assert the wrong behavior,
+- or pass while still being weakly grounded.
+
+Ghost Test Catcher is meant to help developers answer:
+
+- Which generated tests are worth keeping?
+- Which tests are risky or ghosty?
+- Which files influenced the output most?
+- Did the AI stay inside the uploaded codebase, or invent things?
+
+## Core Concepts
+
+### Reliability
+
+A heuristic trust score built from:
+
+- supported claim ratio,
+- groundedness score,
+- context relevance score,
+- evidence weight coverage,
+- execution score.
+
+### Groundedness
+
+Whether specific generated tests can be supported by the uploaded files.
+
+### Context Match
+
+Whether the overall generated output still looks related to the uploaded codebase as a whole.
+
+### ETV
+
+`ETV` means **Effective Test Value**.
+
+It answers:
+
+> How much of this generated test set is actually worth keeping?
+
+Current definition:
+
+```text
+ETV = (keepers + 0.5 * salvageable) / total_tests
 ```
 
-Install in editable mode with all optional dependencies (after cloning the repository):
+Where:
+
+- `keepers` are grounded and passing tests,
+- `salvageable` are partially useful tests,
+- `risky` are ghost-risk or otherwise weak tests.
+
+## Product Flow
+
+### Input
+
+The user provides:
+
+- an OpenAI API key,
+- a test mode: `unit`, `integration`, `e2e`, or `mixed`,
+- a model,
+- a set of uploaded files,
+- optionally a demo scenario.
+
+### Generation
+
+The backend:
+
+- normalizes uploaded files,
+- builds an API map from Python modules, classes, functions, and constants,
+- creates a prompt using the uploaded code and the selected test mode,
+- sends the prompt through the OpenAI interface.
+
+### Verification
+
+After generation, the app:
+
+- parses the generated tests with `ast`,
+- checks symbol and import coverage,
+- finds supporting snippets in the uploaded files,
+- labels tests as `supported`, `borderline`, or `unsupported`.
+
+### Execution
+
+The app writes the uploaded files and generated tests into a temporary workspace and runs:
+
 ```bash
-pip install -e ".[all]"
+pytest -vv -rA
 ```
 
-Documentation is available at [llmSHAP Docs](https://filipnaudot.github.io/llmSHAP/) and a hands-on tutorial can be found [here](https://filipnaudot.github.io/llmSHAP/tutorial.html).
+This gives:
 
-- [Full documentation](https://filipnaudot.github.io/llmSHAP/)  
-- [Tutorial](https://filipnaudot.github.io/llmSHAP/tutorial.html)
+- per-test execution status,
+- pass/fail/error counts,
+- a primary runtime failure if one exists.
 
----
+### Trust Output
 
-## Ghost Test Catcher Web App
+The UI shows:
 
-This repo now includes a small browser MVP for explainable test and file analysis built on top of `llmSHAP`.
+- outcome verdict,
+- reliability score,
+- ETV,
+- execution result,
+- per-test groundedness and execution,
+- pytest failures,
+- grounding warnings,
+- llmSHAP-style file influence,
+- evidence snippets.
 
-It lets you:
-- upload source files and tests,
-- provide instructions plus a prompt,
-- run an LLM answer over the uploaded context,
-- inspect file influence weights from `llmSHAP`,
-- highlight which tests appear to matter most.
+## Architecture
 
-### Run locally with `make`
+### Frontend
+
+`src/llmSHAP/webapp/static/app.js`
+
+React-based browser UI for:
+
+- file upload,
+- demo scenarios,
+- loading/progress state,
+- verdict rendering,
+- per-test cards,
+- detailed evidence sections.
+
+### Backend API
+
+`src/llmSHAP/webapp/app.py`
+
+FastAPI server that exposes:
+
+- `GET /`
+- `GET /api/health`
+- `GET /api/demo-presets`
+- `GET /api/demo-preset/{preset_id}`
+- `POST /api/analyze`
+
+### Analysis Pipeline
+
+`src/llmSHAP/webapp/analysis.py`
+
+Handles:
+
+- file preparation,
+- prompt construction,
+- API map creation,
+- llmSHAP attribution,
+- trust scoring,
+- preflight checks,
+- output assembly.
+
+### Test Parsing
+
+`src/llmSHAP/webapp/test_artifacts.py`
+
+Extracts generated Python tests and parses:
+
+- test names,
+- imports,
+- referenced symbols,
+- assertion count.
+
+### Grounding Verification
+
+`src/llmSHAP/webapp/verification.py`
+
+Computes:
+
+- groundedness score,
+- context relevance score,
+- supported/borderline/unsupported labels,
+- evidence snippets and evidence files.
+
+### Pytest Execution
+
+`src/llmSHAP/webapp/execution.py`
+
+Runs generated tests against uploaded files and returns:
+
+- per-test status,
+- pass/fail/error counts,
+- primary failure message,
+- raw pytest summary.
+
+### LLM Interface
+
+`src/llmSHAP/llm/openai.py`
+
+Wraps the OpenAI Responses API with:
+
+- API key handling,
+- timeout defaults,
+- retry behavior.
+
+## Demo Scenarios
+
+The app includes built-in demo scenarios.
+
+### Grounded Checkout Demo
+
+A connected checkout/billing-style mini project intended to produce more grounded tests.
+
+### Ghost-Risk Alert Demo
+
+A lower-level alerting sample with a stress prompt intended to make unsupported product-level tests more likely.
+
+## Sample Projects
+
+### `demo/allofem`
+
+Three connected Python files for a checkout/order flow.
+
+### `demo/integration_lab`
+
+Four connected Python files designed for integration testing:
+
+- `CustomerRecords.py`
+- `CatalogPricing.py`
+- `InvoiceLedger.py`
+- `BillingWorkflow.py`
+
+### `demo/ghost_risk_sample`
+
+A small alerting sample used to provoke ghost-risk behavior.
+
+## Quick Start
 
 Use Python 3.11+.
 
+### Install
+
 ```bash
-make install PYTHON=/path/to/python3.11
-make web PYTHON=/path/to/python3.11
+make install
 ```
 
-Then open [http://localhost:8000](http://localhost:8000).
+### Run the web app
+
+```bash
+make web
+```
+
+Then open:
+
+[http://127.0.0.1:8000](http://127.0.0.1:8000)
 
 ### Run with Docker
 
@@ -76,182 +277,78 @@ make docker-build
 make docker-run
 ```
 
-Then open [http://localhost:8000](http://localhost:8000).
+Then open:
 
-### Web app inputs
+[http://127.0.0.1:8000](http://127.0.0.1:8000)
 
-- OpenAI API key
-- Instructions
-- Prompt
-- Uploaded files
+## Development
 
-### Web app outputs
+### Install dev dependencies
 
-- AI answer based only on uploaded files
-- Weighted file usage distribution
-- Top supporting files
-- Most impactful test files
-
----
-
-# Example Usage
-
-```python
-from llmSHAP import DataHandler, BasicPromptCodec, ShapleyAttribution
-from llmSHAP.llm import OpenAIInterface
-
-data = "In what city is the Eiffel Tower?"
-handler = DataHandler(data, permanent_keys={0,3,4})
-result = ShapleyAttribution(model=OpenAIInterface(model_name="gpt-4o-mini"),
-                            data_handler=handler,
-                            prompt_codec=BasicPromptCodec(system="Answer the question briefly."),
-                            use_cache=True,
-                            num_threads=16,
-                            ).attribution()
-
-print("\n\n### OUTPUT ###")
-print(result.output)
-
-print("\n\n### ATTRIBUTION ###")
-print(result.attribution)
-
-print("\n\n### HEATMAP ###")
-print(result.render())
-```
-
-## Multimodal Example with `Image`:
-The following example shows `llmSHAP` with images.
-```python
-from llmSHAP import DataHandler, BasicPromptCodec, ShapleyAttribution, Image
-from llmSHAP.llm import OpenAIInterface
-
-data = {
-    "question": "Has our stockprice increased or decreased since the beginning?",
-    "Num employees"        : "The company has about 450 employees.",
-    "[IMAGE] Stock chart"  : Image(image_path="./docs/_static/demo-stock-price.png"),
-    "Report release date"  : "Quarterly reports are released on the 15th.",
-    "Headquarter Location" : "The headquarters is located in a mid-sized city.",
-    "Num countries"        : "It has offices in three countries."
-}
-
-result = ShapleyAttribution(model=OpenAIInterface(model_name="gpt-5-mini", reasoning="low"),
-                            data_handler=DataHandler(data, permanent_keys={"question"}),
-                            prompt_codec=BasicPromptCodec(system="Answer the question briefly."),
-                            use_cache=True,
-                            num_threads=35,
-                            ).attribution()
-
-print("\n\n### OUTPUT ###")
-print(result.output)
-
-print("\n\n### HEATMAP ###")
-print(result.render(abs_values=True, render_labels=True))
-```
-
-<div align='center'>
-    <picture>
-        <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/filipnaudot/llmSHAP/main/docs/_static/example-result-lightmode.png">
-        <img alt="llmSHAP logo" src="https://raw.githubusercontent.com/filipnaudot/llmSHAP/main/docs/_static/example-result-darkmode.png" width="100%" height="100%">
-    </picture>
-</div>
-
-
-
-## Embedding-Based Output Scoring
-
-`EmbeddingCosineSimilarity` measures semantic similarity between outputs using embeddings. 
-It supports two backends:
-- **API** — any OpenAI-compatible embeddings endpoint via `api_url_endpoint`.
-- **Local** — a `sentence-transformers` model downloaded on first use.
-
-For the local backend, install the `embeddings` extra:
 ```bash
-pip install "llmshap[embeddings]"
+make install-dev
 ```
 
-The example below uses the OpenAI API backend, which is already included in `[all]`.
+### Run tests
 
-```python
-from llmSHAP import DataHandler, BasicPromptCodec, ShapleyAttribution, EmbeddingCosineSimilarity
-from llmSHAP.llm import OpenAIInterface
-
-data = "In what city is the Eiffel Tower?"
-handler = DataHandler(data)
-result = ShapleyAttribution(model=OpenAIInterface(model_name="gpt-4o-mini"),
-                            data_handler=handler,
-                            prompt_codec=BasicPromptCodec(system="Answer the question briefly."),
-                            use_cache=True,
-                            num_threads=16,
-                            value_function=EmbeddingCosineSimilarity(
-                                model_name = "text-embedding-3-small",
-                                api_url_endpoint = "https://api.openai.com/v1")
-                            ).attribution()
-
-print("\n\n### OUTPUT ###")
-print(result.output)
-
-print("\n\n### HEATMAP ###")
-print(result.render(abs_values=True, render_labels=True))
+```bash
+.venv/bin/python -m pytest
 ```
 
+### Clean local artifacts
 
----
-
-## Example data
-
-You can pass either a string or a dictionary:
-
-```python
-from llmSHAP import DataHandler
-
-# String input
-data = "The quick brown fox jumps over the lazy dog"
-handler = DataHandler(data)
-
-# Dictionary input
-data = {"a": "The", "b": "quick", "c": "brown", "d": "fox"}
-handler = DataHandler(data)
+```bash
+make clean
 ```
 
-To exclude certain keys from the computations, use `permanent_keys`:
-```python
-from llmSHAP import DataHandler
+## Optional CLI
 
-data = {"a": "The", "b": "quick", "c": "brown", "d": "fox"}
-handler = DataHandler(data, permanent_keys={"a", "d"})
+This repo also includes a lightweight CLI for codebase RAG attribution:
 
-# Get data with index 1 WITHOUT the permanent features.
-print(handler.get_data({1}, exclude_permanent_keys=True, mask=False))
-# Output: {'b': 'quick'}
+`tools/codebase_rag_explain.py`
 
-# Get data with index 1 AND the permanent features.
-print(handler.get_data({1}, exclude_permanent_keys=False, mask=False))
-# Output: {'a': 'The', 'b': 'quick', 'd': 'fox'}
+Example:
+
+```bash
+python tools/codebase_rag_explain.py \
+  --repo . \
+  --question "Where is the OpenAI model interface implemented?" \
+  --top-k 6
 ```
----
 
+## How llmSHAP Fits In
 
-## Comparison with TokenSHAP
-| Capability                                                                | **llmSHAP**                                                 | **TokenSHAP**                  |
-| ------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------ |
-| Threaded                                                                  | ✅ (optional ``num_threads``)                                | ❌                              |
-| Modular architecture                                                      | ✅                                                           | ❌                              |
-| Heuristics                                                                | SlidingWindow • Monte Carlo • Counterfactual                 | Monte Carlo                    |
-| Caching across coalitions                                      | ✅                                                           | ❌                              |
-| Sentence-/chunk-level attribution                                         | ✅                                                           | ✅                             |
-| Permanent context pinning (always-included features)                      | ✅                                                           | ❌                              |
-| Pluggable similarity metric                                               | ✅ TF-IDF, embeddings                                        | ✅ TF-IDF, embeddings          |
-| Docs & tutorial                                                           | ✅ Docs + tutorial                                           | ✅ README only                 |
-| Unit tests & CI                                                           | ✅ Pytest + GitHub Actions                                   | ❌                              |
-| Image attribution                                                         | ✅                                                           | ✅ PixelSHAP                   |
-| In-image attribution                                                      | ❌                                                           | ✅ PixelSHAP                   |
+This project is built on top of the original `llmSHAP` framework.
 
----
+In Ghost Test Catcher, llmSHAP is used as the explainability engine for:
 
-<br/>
-<br/>
-<br/>
+- attributing which uploaded files influenced the generated output,
+- exposing weighted file impact,
+- supporting trust and evidence analysis.
 
-# Stars ⭐️
+The product focus of this repo is no longer “generic llmSHAP examples”.
+It is specifically:
 
-[![Star History Chart](https://api.star-history.com/svg?repos=filipnaudot/llmSHAP&type=Date&legend=top-left)](https://www.star-history.com/#filipnaudot/llmSHAP&type=date&legend=top-left)
+> a trust and verification workflow for AI-generated software tests.
+
+## Current Status
+
+This is a hackathon-grade proof of concept.
+
+The thresholds and trust cutoffs are prototype heuristics, not calibrated benchmark values.
+
+The project is best understood as:
+
+- a product demo,
+- a research direction,
+- and a devtool concept for “verification before trust”.
+
+## Suggested Uses
+
+Potential future directions include:
+
+- CI gates for AI-generated tests,
+- IDE plugins for trust scoring,
+- pull request review assistants,
+- auditability tools for AI-assisted development,
+- enterprise governance for generated code and tests.
