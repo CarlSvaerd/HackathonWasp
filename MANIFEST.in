@@ -3,3 +3,4 @@ prune docs
 prune tests
 prune env
 prune logs
+recursive-include src/llmSHAP/webapp/static *

@@ -31,6 +31,7 @@ class OpenAIInterface(LLMInterface):
     def __init__(self,
                  *,
                  model_name: str,
+                 api_key: Optional[str] = None,
                  temperature: Optional[float] = None,
                  max_tokens: int = 512,
                  reasoning: Optional[str] = None,
@@ -48,10 +49,10 @@ class OpenAIInterface(LLMInterface):
             ) from None
         
         load_dotenv()
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
+        resolved_api_key = api_key or os.getenv("OPENAI_API_KEY")
+        if not resolved_api_key:
             raise RuntimeError("OPENAI_API_KEY is not set. Set it (e.g. in your .env) before using OpenAIInterface.")
-        self.client: OpenAI = OpenAI(api_key=api_key, max_retries=1, timeout=timeout)
+        self.client: OpenAI = OpenAI(api_key=resolved_api_key, max_retries=1, timeout=timeout)
         self.model_name = model_name
         self.temperature = temperature
         self.max_tokens = max_tokens

@@ -47,6 +47,53 @@ Documentation is available at [llmSHAP Docs](https://filipnaudot.github.io/llmSH
 
 ---
 
+## Ghost Test Catcher Web App
+
+This repo now includes a small browser MVP for explainable test and file analysis built on top of `llmSHAP`.
+
+It lets you:
+- upload source files and tests,
+- provide instructions plus a prompt,
+- run an LLM answer over the uploaded context,
+- inspect file influence weights from `llmSHAP`,
+- highlight which tests appear to matter most.
+
+### Run locally with `make`
+
+Use Python 3.11+.
+
+```bash
+make install PYTHON=/path/to/python3.11
+make web PYTHON=/path/to/python3.11
+```
+
+Then open [http://localhost:8000](http://localhost:8000).
+
+### Run with Docker
+
+```bash
+make docker-build
+make docker-run
+```
+
+Then open [http://localhost:8000](http://localhost:8000).
+
+### Web app inputs
+
+- OpenAI API key
+- Instructions
+- Prompt
+- Uploaded files
+
+### Web app outputs
+
+- AI answer based only on uploaded files
+- Weighted file usage distribution
+- Top supporting files
+- Most impactful test files
+
+---
+
 # Example Usage
 
 ```python
