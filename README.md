@@ -1,41 +1,41 @@
 # Ghost Test Catcher
 
-Ghost Test Catcher is a proof-of-concept trust layer for AI-generated software tests.
+Ghost Test Catcher is a proof-of-concept trust checker for AI-generated software tests.
 
-Instead of only asking an LLM to write tests, this project checks whether those tests are actually supported by the uploaded source files, whether they run in `pytest`, and whether they look like useful tests or ghost tests.
+Instead of only asking an LLM to create tests, this project checks whether those tests are actually supported by the uploaded source files, whether they run in `pytest`, and whether they look worth keeping or like ghost tests.
 
-## What It Does
+## Why It Exists
+
+AI-generated tests can look convincing while still being wrong. They may:
+
+- reference symbols that do not exist,
+- assume workflows the code does not implement,
+- assert the wrong behavior,
+- or pass while still being weakly grounded in the files they claim to test.
+
+Ghost Test Catcher is built to answer:
+
+- Are these generated tests grounded in the uploaded code?
+- Which tests are reliable, salvageable, or risky?
+- Which files influenced the output most?
+- Did the model stay inside the codebase, or invent behavior?
+
+## What The App Does
 
 Given a small set of uploaded files, the app:
 
-1. builds a prompt for test generation,
-2. gives the LLM an API map of the uploaded Python files,
-3. generates tests,
-4. uses llmSHAP-style attribution to see which files influenced the output,
-5. checks groundedness and context relevance,
+1. builds a test-generation prompt,
+2. extracts a Python API map from the uploaded files,
+3. asks the LLM to generate tests,
+4. attributes which files influenced that output,
+5. verifies grounding and overall context match,
 6. runs the generated tests in `pytest`,
 7. returns a trust-oriented verdict.
 
-The main idea is simple:
+The core idea is:
 
 > Passing tests are not enough.  
-> We also want to know whether those tests are actually grounded in the code they claim to test.
-
-## Why This Exists
-
-AI coding tools can generate plausible-looking tests that:
-
-- reference symbols that do not exist,
-- assume workflows the codebase does not implement,
-- assert the wrong behavior,
-- or pass while still being weakly grounded.
-
-Ghost Test Catcher is meant to help developers answer:
-
-- Which generated tests are worth keeping?
-- Which tests are risky or ghosty?
-- Which files influenced the output most?
-- Did the AI stay inside the uploaded codebase, or invent things?
+> We also want to know whether those tests are actually supported by the code they claim to test.
 
 ## Core Concepts
 
@@ -55,15 +55,11 @@ Whether specific generated tests can be supported by the uploaded files.
 
 ### Context Match
 
-Whether the overall generated output still looks related to the uploaded codebase as a whole.
+Whether the generated output still looks broadly related to the uploaded codebase as a whole.
 
 ### ETV
 
 `ETV` means **Effective Test Value**.
-
-It answers:
-
-> How much of this generated test set is actually worth keeping?
 
 Current definition:
 
@@ -75,7 +71,7 @@ Where:
 
 - `keepers` are grounded and passing tests,
 - `salvageable` are partially useful tests,
-- `risky` are ghost-risk or otherwise weak tests.
+- `risky` are weak or ghost-risk tests.
 
 ## Product Flow
 
@@ -95,8 +91,8 @@ The backend:
 
 - normalizes uploaded files,
 - builds an API map from Python modules, classes, functions, and constants,
-- creates a prompt using the uploaded code and the selected test mode,
-- sends the prompt through the OpenAI interface.
+- creates a prompt from the uploaded code and selected test mode,
+- sends that prompt through the OpenAI interface.
 
 ### Verification
 
@@ -115,11 +111,11 @@ The app writes the uploaded files and generated tests into a temporary workspace
 pytest -vv -rA
 ```
 
-This gives:
+This produces:
 
 - per-test execution status,
 - pass/fail/error counts,
-- a primary runtime failure if one exists.
+- a primary runtime failure when one exists.
 
 ### Trust Output
 
@@ -132,7 +128,7 @@ The UI shows:
 - per-test groundedness and execution,
 - pytest failures,
 - grounding warnings,
-- llmSHAP-style file influence,
+- weighted file influence,
 - evidence snippets.
 
 ## Architecture
@@ -148,13 +144,13 @@ React-based browser UI for:
 - loading/progress state,
 - verdict rendering,
 - per-test cards,
-- detailed evidence sections.
+- expandable evidence sections.
 
 ### Backend API
 
 `src/llmSHAP/webapp/app.py`
 
-FastAPI server that exposes:
+FastAPI server exposing:
 
 - `GET /`
 - `GET /api/health`
@@ -171,7 +167,7 @@ Handles:
 - file preparation,
 - prompt construction,
 - API map creation,
-- llmSHAP attribution,
+- attribution,
 - trust scoring,
 - preflight checks,
 - output assembly.
@@ -196,7 +192,7 @@ Computes:
 - groundedness score,
 - context relevance score,
 - supported/borderline/unsupported labels,
-- evidence snippets and evidence files.
+- supporting snippets and evidence files.
 
 ### Pytest Execution
 
@@ -209,33 +205,23 @@ Runs generated tests against uploaded files and returns:
 - primary failure message,
 - raw pytest summary.
 
-### LLM Interface
-
-`src/llmSHAP/llm/openai.py`
-
-Wraps the OpenAI Responses API with:
-
-- API key handling,
-- timeout defaults,
-- retry behavior.
-
 ## Demo Scenarios
 
 The app includes built-in demo scenarios.
 
 ### Grounded Checkout Demo
 
-A connected checkout/billing-style mini project intended to produce more grounded tests.
+A connected checkout-style sample intended to produce more grounded tests.
 
 ### Ghost-Risk Alert Demo
 
-A lower-level alerting sample with a stress prompt intended to make unsupported product-level tests more likely.
+A smaller alerting sample with a stress prompt intended to make unsupported product-level tests more likely.
 
 ## Sample Projects
 
 ### `demo/allofem`
 
-Three connected Python files for a checkout/order flow.
+Three connected Python files for a checkout and order flow.
 
 ### `demo/integration_lab`
 
@@ -266,9 +252,7 @@ make install
 make web
 ```
 
-Then open:
-
-[http://127.0.0.1:8000](http://127.0.0.1:8000)
+Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
 ### Run with Docker
 
@@ -277,9 +261,7 @@ make docker-build
 make docker-run
 ```
 
-Then open:
-
-[http://127.0.0.1:8000](http://127.0.0.1:8000)
+Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
 ## Development
 
@@ -303,7 +285,7 @@ make clean
 
 ## Optional CLI
 
-This repo also includes a lightweight CLI for codebase RAG attribution:
+This repo also includes a lightweight CLI for codebase attribution:
 
 `tools/codebase_rag_explain.py`
 
@@ -316,32 +298,29 @@ python tools/codebase_rag_explain.py \
   --top-k 6
 ```
 
-## How llmSHAP Fits In
+## Attribution Engine
 
-This project is built on top of the original `llmSHAP` framework.
-
-In Ghost Test Catcher, llmSHAP is used as the explainability engine for:
+This project uses the underlying attribution framework in the codebase as an internal explainability engine for:
 
 - attributing which uploaded files influenced the generated output,
 - exposing weighted file impact,
-- supporting trust and evidence analysis.
+- supporting the trust and evidence analysis.
 
-The product focus of this repo is no longer “generic llmSHAP examples”.
-It is specifically:
+The product focus of this repo is now Ghost Test Catcher itself:
 
 > a trust and verification workflow for AI-generated software tests.
 
 ## Current Status
 
-This is a hackathon-grade proof of concept.
+This is a hackathon proof of concept.
 
-The thresholds and trust cutoffs are prototype heuristics, not calibrated benchmark values.
+The trust thresholds and score cutoffs are prototype heuristics, not calibrated benchmark values.
 
 The project is best understood as:
 
 - a product demo,
-- a research direction,
-- and a devtool concept for “verification before trust”.
+- a devtool concept,
+- and a research direction around verification before trust.
 
 ## Suggested Uses
 
