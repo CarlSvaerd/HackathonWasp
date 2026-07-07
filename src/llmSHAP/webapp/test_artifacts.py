@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import builtins
 from dataclasses import dataclass
 import re
 
@@ -17,7 +18,7 @@ COMMON_TEST_HELPERS = {
     "capsys",
     "self",
 }
-BUILTIN_NAMES = set(dir(__builtins__))
+BUILTIN_NAMES = set(dir(builtins))
 
 
 @dataclass(frozen=True)
@@ -46,7 +47,17 @@ def parse_generated_tests(answer: str) -> dict:
             "syntax_error": "No Python test code block was found in the model output.",
             "test_cases": [],
         }
+    return parse_python_test_source(code)
 
+
+def parse_python_test_source(code: str) -> dict:
+    if not code.strip():
+        return {
+            "code": "",
+            "syntax_error": "No Python test source was provided.",
+            "test_cases": [],
+            "module_imports": [],
+        }
     try:
         tree = ast.parse(code)
     except SyntaxError as exc:
@@ -60,7 +71,7 @@ def parse_generated_tests(answer: str) -> dict:
     module_imports = _collect_module_level_imports(tree)
     test_cases: list[GeneratedTestCase] = []
     for node in tree.body:
-        if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
             segment = ast.get_source_segment(code, node)
             if not segment:
                 start = max(0, node.lineno - 1)
@@ -97,14 +108,35 @@ def _collect_module_level_imports(tree: ast.Module) -> list[str]:
 
 def _collect_symbols(node: ast.AST) -> list[str]:
     symbols: set[str] = set()
+    local_names = _collect_local_names(node)
     for child in ast.walk(node):
         if isinstance(child, ast.Name):
-            if _is_interesting_symbol(child.id):
+            if _is_interesting_symbol(child.id) and child.id not in local_names:
                 symbols.add(child.id)
         elif isinstance(child, ast.Attribute):
             if _is_interesting_symbol(child.attr):
                 symbols.add(child.attr)
     return sorted(symbols)
+
+
+def _collect_local_names(node: ast.AST) -> set[str]:
+    names: set[str] = set()
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        for arg in [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]:
+            names.add(arg.arg)
+        if node.args.vararg:
+            names.add(node.args.vararg.arg)
+        if node.args.kwarg:
+            names.add(node.args.kwarg.arg)
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name) and isinstance(child.ctx, (ast.Store, ast.Del)):
+            names.add(child.id)
+        elif isinstance(child, ast.ExceptHandler) and child.name:
+            names.add(child.name)
+        elif isinstance(child, (ast.Import, ast.ImportFrom)):
+            for alias in child.names:
+                names.add(alias.asname or alias.name.split(".", 1)[0])
+    return names
 
 
 def _collect_imports(node: ast.AST) -> list[str]:

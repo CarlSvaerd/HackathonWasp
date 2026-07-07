@@ -7,6 +7,8 @@ Documentation
    :maxdepth: 2
 
    tutorial
+   ghost-test-catcher
+   ghost-test-catcher-release
    api
 
 
@@ -41,4 +43,6 @@ Contents
 --------
 
 - :doc:`tutorial`
+- :doc:`ghost-test-catcher`
+- :doc:`ghost-test-catcher-release`
 - :doc:`api`

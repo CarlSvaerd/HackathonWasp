@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import ast
 import re
 from typing import TYPE_CHECKING, Iterable
 
 from llmSHAP import Generation, TFIDFCosineSimilarity
-from llmSHAP.webapp.test_artifacts import GeneratedTestCase, parse_generated_tests
+from llmSHAP.webapp.test_artifacts import GeneratedTestCase, parse_generated_tests, parse_python_test_source
 
 if TYPE_CHECKING:
     from llmSHAP.webapp.analysis import UploadedContextFile
@@ -17,7 +18,14 @@ SNIPPET_OVERLAP = 2
 
 
 def verify_answer_grounding(answer: str, files: list[UploadedContextFile]) -> dict:
-    parsed_tests = parse_generated_tests(answer)
+    return _verify_parsed_grounding(answer, parse_generated_tests(answer), files)
+
+
+def verify_python_test_source_grounding(test_source: str, files: list[UploadedContextFile]) -> dict:
+    return _verify_parsed_grounding(test_source, parse_python_test_source(test_source), files)
+
+
+def _verify_parsed_grounding(answer: str, parsed_tests: dict, files: list[UploadedContextFile]) -> dict:
     if parsed_tests["syntax_error"]:
         return {
             "verdict": "ghost_risk",
@@ -72,6 +80,7 @@ def verify_answer_grounding(answer: str, files: list[UploadedContextFile]) -> di
     snippets = _build_snippets(files)
     symbol_index = _build_symbol_index(files)
     file_stems = {file.path.rsplit("/", 1)[-1].rsplit(".", 1)[0]: file.path for file in files}
+    module_aliases = _build_module_aliases(files)
     similarity = TFIDFCosineSimilarity()
 
     claim_checks = []
@@ -81,8 +90,13 @@ def verify_answer_grounding(answer: str, files: list[UploadedContextFile]) -> di
         tfidf_score = float(best_match["score"]) if best_match is not None else 0.0
         grounded_symbols = [symbol for symbol in test_case.referenced_symbols if symbol in symbol_index]
         missing_symbols = [symbol for symbol in test_case.referenced_symbols if symbol not in symbol_index]
+        evidence_symbols = _format_symbol_evidence(grounded_symbols, symbol_index)
         symbol_coverage = len(grounded_symbols) / len(test_case.referenced_symbols) if test_case.referenced_symbols else 0.0
-        imported_local_modules = [module for module in test_case.imported_modules if module in file_stems]
+        imported_local_modules = [
+            module
+            for module in test_case.imported_modules
+            if module in module_aliases or module.split(".", 1)[0] in file_stems
+        ]
         import_coverage = len(imported_local_modules) / len(test_case.imported_modules) if test_case.imported_modules else 0.0
         assertion_score = 1.0 if test_case.assertion_count > 0 else 0.0
         confidence = (
@@ -107,11 +121,19 @@ def verify_answer_grounding(answer: str, files: list[UploadedContextFile]) -> di
                 },
                 "mentioned_symbols": test_case.referenced_symbols,
                 "missing_symbols": missing_symbols,
+                "evidence_symbols": evidence_symbols,
             }
         )
         if best_match is not None:
             hit = file_hits.setdefault(
                 str(best_match["path"]),
+                {"claims": 0, "max_confidence": 0.0},
+            )
+            hit["claims"] = int(hit["claims"]) + 1
+            hit["max_confidence"] = max(float(hit["max_confidence"]), confidence)
+        for location in _first_symbol_locations(grounded_symbols, symbol_index):
+            hit = file_hits.setdefault(
+                str(location["path"]),
                 {"claims": 0, "max_confidence": 0.0},
             )
             hit["claims"] = int(hit["claims"]) + 1
@@ -187,13 +209,118 @@ def _build_snippets(files: list[UploadedContextFile]) -> list[dict]:
     return snippets
 
 
-def _build_symbol_index(files: list[UploadedContextFile]) -> dict[str, set[str]]:
-    symbol_index: dict[str, set[str]] = {}
+def _build_symbol_index(files: list[UploadedContextFile]) -> dict[str, list[dict]]:
+    symbol_index: dict[str, list[dict]] = {}
     for uploaded_file in files:
         path = uploaded_file.path
+        if path.endswith(".py"):
+            try:
+                tree = ast.parse(uploaded_file.content)
+            except SyntaxError:
+                tree = None
+            if tree is not None:
+                _index_python_symbols(symbol_index, tree, path)
+                continue
         for symbol in re.findall(r"\b[A-Za-z_][A-Za-z0-9_]{2,}\b", uploaded_file.content):
-            symbol_index.setdefault(symbol, set()).add(path)
+            _add_symbol_location(symbol_index, symbol, path=path, line=1, kind="text")
     return symbol_index
+
+
+def _index_python_symbols(symbol_index: dict[str, list[dict]], tree: ast.Module, path: str) -> None:
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            kind = "private_function" if node.name.startswith("_") else "function"
+            _add_symbol_location(symbol_index, node.name, path=path, line=node.lineno, kind=kind)
+        elif isinstance(node, ast.ClassDef):
+            class_kind = "private_class" if node.name.startswith("_") else "class"
+            _add_symbol_location(symbol_index, node.name, path=path, line=node.lineno, kind=class_kind)
+            for child in node.body:
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    method_kind = "private_method" if child.name.startswith("_") else f"method:{node.name}"
+                    _add_symbol_location(symbol_index, child.name, path=path, line=child.lineno, kind=method_kind)
+                    _add_symbol_location(
+                        symbol_index,
+                        f"{node.name}.{child.name}",
+                        path=path,
+                        line=child.lineno,
+                        kind="method",
+                    )
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                for name in _target_names(target):
+                    _add_symbol_location(symbol_index, name, path=path, line=node.lineno, kind="variable")
+        elif isinstance(node, ast.AnnAssign):
+            for name in _target_names(node.target):
+                _add_symbol_location(symbol_index, name, path=path, line=node.lineno, kind="variable")
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                exposed_name = alias.asname or alias.name.split(".", 1)[0]
+                _add_symbol_location(symbol_index, exposed_name, path=path, line=node.lineno, kind="import")
+
+
+def _target_names(target: ast.AST) -> list[str]:
+    if isinstance(target, ast.Name):
+        return [target.id]
+    if isinstance(target, (ast.Tuple, ast.List)):
+        names: list[str] = []
+        for item in target.elts:
+            names.extend(_target_names(item))
+        return names
+    return []
+
+
+def _add_symbol_location(symbol_index: dict[str, list[dict]], symbol: str, *, path: str, line: int, kind: str) -> None:
+    if not symbol or len(symbol) <= 2:
+        return
+    location = {"path": path, "line": line, "kind": kind}
+    locations = symbol_index.setdefault(symbol, [])
+    if location not in locations:
+        locations.append(location)
+
+
+def _format_symbol_evidence(grounded_symbols: list[str], symbol_index: dict[str, list[dict]]) -> list[str]:
+    evidence = []
+    for symbol in grounded_symbols:
+        locations = symbol_index.get(symbol) or []
+        if locations:
+            location = locations[0]
+            evidence.append(f"{symbol} -> {location['path']}:{location['line']} ({location['kind']})")
+    return evidence
+
+
+def _first_symbol_locations(grounded_symbols: list[str], symbol_index: dict[str, list[dict]]) -> list[dict]:
+    locations = []
+    seen_paths: set[str] = set()
+    for symbol in grounded_symbols:
+        symbol_locations = symbol_index.get(symbol) or []
+        if not symbol_locations:
+            continue
+        location = symbol_locations[0]
+        path = str(location["path"])
+        if path not in seen_paths:
+            locations.append(location)
+            seen_paths.add(path)
+    return locations
+
+
+def _build_module_aliases(files: list[UploadedContextFile]) -> set[str]:
+    aliases: set[str] = set()
+    for uploaded_file in files:
+        normalized = uploaded_file.path.replace("\\", "/").strip("/")
+        if not normalized.endswith(".py"):
+            continue
+        module = normalized[:-3].replace("/", ".")
+        _add_module_aliases(aliases, module)
+        if module.startswith("src."):
+            _add_module_aliases(aliases, module.removeprefix("src."))
+    return aliases
+
+
+def _add_module_aliases(aliases: set[str], module: str) -> None:
+    aliases.add(module)
+    parts = module.split(".")
+    for index in range(1, len(parts)):
+        aliases.add(".".join(parts[:index]))
 
 
 def _best_matching_snippet(claim: str, snippets: list[dict], similarity: TFIDFCosineSimilarity) -> dict | None:

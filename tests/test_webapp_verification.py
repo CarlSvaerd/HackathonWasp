@@ -68,3 +68,34 @@ def test_login_triggers_stripe_invoice_and_cluster_bootstrap():
 
     assert result["verdict"] == "ghost_risk"
     assert result["unsupported_claims"] >= 1
+
+
+def test_verify_answer_grounding_indexes_private_helpers_used_by_tests() -> None:
+    files = [
+        UploadedContextFile(
+            path="src/reports.py",
+            content=(
+                "def _summary_count(output, label):\n"
+                "    return output.count(label)\n"
+            ),
+            size_bytes=72,
+            line_count=2,
+            is_test_file=False,
+        )
+    ]
+
+    result = verify_answer_grounding(
+        """```python
+from src.reports import _summary_count
+
+def test_summary_count_counts_labels():
+    assert _summary_count('1 error, 6 passed', 'error') == 1
+```""",
+        files,
+    )
+
+    claim = result["claim_checks"][0]
+
+    assert claim["status"] == "supported"
+    assert claim["missing_symbols"] == []
+    assert any("_summary_count -> src/reports.py:1" in item for item in claim["evidence_symbols"])

@@ -263,6 +263,114 @@ make docker-run
 
 Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
+### Analyze existing tests from the CLI
+
+Ghost Test Catcher can also work as a developer tool without generating new tests.
+This is the mode used by the VS Code extension.
+
+```bash
+python -m llmSHAP.ghost.cli analyze \
+  --repo . \
+  --tests tests/test_webapp_execution.py \
+  --source src \
+  --format pretty
+```
+
+For machine-readable output:
+
+```bash
+python -m llmSHAP.ghost.cli analyze \
+  --repo . \
+  --tests tests/test_webapp_execution.py \
+  --source src \
+  --format json
+```
+
+The installed command is also available after package installation:
+
+```bash
+ghost-test-catcher analyze --repo . --tests tests/test_webapp_execution.py --source src
+```
+
+Run the built-in calibration suite to confirm the checker still separates grounded tests from ghost-risk tests:
+
+```bash
+ghost-test-catcher calibrate --format pretty
+```
+
+### Run the CI gate
+
+The CI command is intended for pull requests, release checks, and generated-test review gates.
+It writes a JSON report, optionally writes a Markdown summary, and exits non-zero when the selected failure policy is violated.
+
+```bash
+ghost-test-catcher ci \
+  --repo . \
+  --tests tests/test_webapp_execution.py \
+  --source src \
+  --no-execution \
+  --summary ghost-test-catcher-summary.md \
+  --output ghost-test-catcher-report.json \
+  --format json \
+  --fail-on ghost_risk
+```
+
+Failure policies:
+
+- `ghost_risk`: fail only when the result is high-risk.
+- `needs_review`: fail unless the result is fully reliable.
+- `never`: always exit 0 while still producing reports.
+
+### VS Code extension
+
+The editor extension lives in:
+
+`packages/vscode-extension`
+
+It provides:
+
+- `Ghost Test Catcher: Analyze Current Test File`
+- `Ghost Test Catcher: Analyze Changed Test Files`
+- inline diagnostics on `def test_*` functions
+- CodeLens verdict summaries
+- a report panel with reliability, ETV, pytest status, evidence, and missing symbols
+
+For local development, open `packages/vscode-extension` in VS Code and run the extension host.
+The extension shells out to:
+
+```bash
+python -m llmSHAP.ghost.cli analyze
+```
+
+When running from this repository, the extension prepends `<workspace>/src` to `PYTHONPATH`.
+In another project, install the package into the configured Python environment:
+
+```bash
+pip install -e ".[ghost]"
+```
+
+When execution is enabled, pytest runs against a temporary copy of the selected tests and source files.
+The extension asks for confirmation before executing tests by default.
+
+Package the extension locally with:
+
+```bash
+cd packages/vscode-extension
+npm install --ignore-scripts
+npm run check
+npm test
+npm run package
+```
+
+That produces `ghost-test-catcher-0.1.0.vsix`, installable through `Extensions: Install from VSIX...`.
+
+The extension package includes Marketplace metadata, a PNG icon, a changelog, and a `.vscodeignore` that excludes local build artifacts.
+The icon is reproducible:
+
+```bash
+python tools/generate_vscode_extension_icon.py
+```
+
 ## Development
 
 ### Install dev dependencies
@@ -283,7 +391,7 @@ make install-dev
 make clean
 ```
 
-## Optional CLI
+## Optional Codebase Q&A CLI
 
 This repo also includes a lightweight CLI for codebase attribution:
 

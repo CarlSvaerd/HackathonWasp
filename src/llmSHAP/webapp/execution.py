@@ -8,7 +8,7 @@ import sys
 import tempfile
 from typing import TYPE_CHECKING
 
-from llmSHAP.webapp.test_artifacts import parse_generated_tests
+from llmSHAP.webapp.test_artifacts import parse_generated_tests, parse_python_test_source
 
 if TYPE_CHECKING:
     from llmSHAP.webapp.analysis import UploadedContextFile
@@ -30,7 +30,14 @@ PRIMARY_FAILURE_PATTERNS = [
 
 
 def run_generated_tests(answer: str, files: list[UploadedContextFile]) -> dict:
-    parsed = parse_generated_tests(answer)
+    return _run_parsed_tests(parse_generated_tests(answer), files)
+
+
+def run_python_test_source(test_source: str, files: list[UploadedContextFile]) -> dict:
+    return _run_parsed_tests(parse_python_test_source(test_source), files)
+
+
+def _run_parsed_tests(parsed: dict, files: list[UploadedContextFile]) -> dict:
     if parsed["syntax_error"]:
         return {
             "status": "invalid_test_code",
@@ -71,7 +78,13 @@ def run_generated_tests(answer: str, files: list[UploadedContextFile]) -> dict:
 
         env = dict(os.environ)
         existing_pythonpath = env.get("PYTHONPATH", "")
-        env["PYTHONPATH"] = str(root) if not existing_pythonpath else f"{root}{os.pathsep}{existing_pythonpath}"
+        pythonpath_entries = [str(root)]
+        src_root = root / "src"
+        if src_root.exists():
+            pythonpath_entries.append(str(src_root))
+        if existing_pythonpath:
+            pythonpath_entries.append(existing_pythonpath)
+        env["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
         env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
         try:
             completed = _run_pytest(generated_test_path, root, env)
@@ -111,7 +124,7 @@ def run_generated_tests(answer: str, files: list[UploadedContextFile]) -> dict:
     return {
         "status": status,
         "message": message,
-        "primary_failure": _extract_primary_failure(combined_output),
+        "primary_failure": "" if status == "passed" else _extract_primary_failure(combined_output),
         "pytest_summary": combined_output,
         "per_test_results": per_test_results,
         "passed": passed,

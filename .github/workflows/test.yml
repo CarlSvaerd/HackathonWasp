@@ -37,3 +37,72 @@ jobs:
 
       - name: Run tests
         run: pytest --maxfail=1 --disable-warnings -q
+
+      - name: Run Ghost Test Catcher calibration
+        run: python -m llmSHAP.ghost.cli calibrate --format pretty
+
+      - name: Smoke test Ghost Test Catcher CLI
+        run: |
+          python -m llmSHAP.ghost.cli analyze \
+            --repo . \
+            --tests tests/test_webapp_execution.py \
+            --source src \
+            --no-execution \
+            --format json
+
+      - name: Run Ghost Test Catcher CI gate
+        run: |
+          python -m llmSHAP.ghost.cli ci \
+            --repo . \
+            --tests tests/test_webapp_execution.py \
+            --source src \
+            --no-execution \
+            --summary ghost-test-catcher-summary.md \
+            --output ghost-test-catcher-report.json \
+            --format json \
+            --fail-on ghost_risk
+
+      - name: Publish Ghost Test Catcher step summary
+        run: cat ghost-test-catcher-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Ghost Test Catcher report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghost-test-catcher-report-${{ matrix.python-version }}
+          path: |
+            ghost-test-catcher-summary.md
+            ghost-test-catcher-report.json
+
+  vscode-extension:
+    name: Check VS Code extension
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install extension dependencies
+        working-directory: packages/vscode-extension
+        run: npm install --ignore-scripts
+
+      - name: Check extension JavaScript
+        working-directory: packages/vscode-extension
+        run: npm run check
+
+      - name: Run extension unit tests
+        working-directory: packages/vscode-extension
+        run: npm test
+
+      - name: Package extension
+        working-directory: packages/vscode-extension
+        run: npx vsce package --no-dependencies --out ghost-test-catcher-0.1.0.vsix
+
+      - name: Upload VS Code extension VSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghost-test-catcher-vsix
+          path: packages/vscode-extension/ghost-test-catcher-0.1.0.vsix

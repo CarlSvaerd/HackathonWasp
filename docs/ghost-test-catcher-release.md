@@ -1,0 +1,71 @@
+# Ghost Test Catcher Release Runbook
+
+This runbook turns the repository into a repeatable product release flow for the Python CLI, the web app, and the VS Code extension.
+
+## Release Readiness Criteria
+
+- The Python package installs with the `ghost` extra.
+- `ghost-test-catcher analyze` works against existing pytest files.
+- `ghost-test-catcher ci` writes both JSON and Markdown reports.
+- `ghost-test-catcher calibrate` passes every built-in calibration case.
+- The VS Code extension passes syntax checks and unit tests.
+- The VS Code extension packages into a `.vsix` that includes the icon, changelog, README, manifest, and extension code.
+
+## Local Verification Commands
+
+```bash
+python -m pytest
+python -m llmSHAP.ghost.cli calibrate --format pretty
+python -m llmSHAP.ghost.cli ci \
+  --repo . \
+  --tests tests/test_webapp_execution.py \
+  --source src \
+  --no-execution \
+  --summary ghost-test-catcher-summary.md \
+  --output ghost-test-catcher-report.json \
+  --format json \
+  --fail-on ghost_risk
+cd packages/vscode-extension
+npm install --ignore-scripts
+npm run check
+npm test
+npm run package
+```
+
+## VSIX Installation Smoke Test
+
+```bash
+code --install-extension packages/vscode-extension/ghost-test-catcher-0.1.0.vsix --force
+```
+
+After installation, open a Python repository, open a pytest file, and run `Ghost Test Catcher: Analyze Current Test File` from the command palette. The extension should show diagnostics on risky tests, CodeLens verdicts above tests, and a report panel through `Ghost Test Catcher: Open Last Report`.
+
+## Marketplace Publishing Notes
+
+The package is prepared for Marketplace packaging with:
+
+- `publisher`
+- `displayName`
+- `description`
+- `categories`
+- `keywords`
+- `repository`
+- `homepage`
+- `bugs`
+- `galleryBanner`
+- a PNG icon at `media/icon.png`
+- a changelog at `CHANGELOG.md`
+
+The VS Code publishing documentation states that extension icons may not be SVG when publishing. Keep `media/icon.png` as the published icon and regenerate it with `python tools/generate_vscode_extension_icon.py` when the design changes.
+
+## CI Gate Policy
+
+Use `--fail-on ghost_risk` for the first rollout. It blocks only the highest-risk results while still surfacing `needs_review` cases in the report. Once the calibration suite grows and the team trusts the thresholds, move protected branches to `--fail-on needs_review`.
+
+## Release Sequence
+
+1. Run the local verification commands.
+2. Confirm `packages/vscode-extension/ghost-test-catcher-0.1.0.vsix` was rebuilt.
+3. Install the VSIX locally and run the extension against at least one grounded test and one intentionally ghost-risk test.
+4. Push the branch and confirm GitHub Actions produces Python, calibration, CI gate, and extension packaging results.
+5. Publish the VSIX manually from the Marketplace publisher management page or with `vsce publish` after publisher authentication is configured.

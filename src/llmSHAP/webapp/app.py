@@ -7,8 +7,9 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from llmSHAP.ghost.analysis import generate_and_check
 from llmSHAP.llm.openai import OpenAIInterface
-from llmSHAP.webapp.analysis import analyze_uploaded_files, prepare_uploaded_files
+from llmSHAP.webapp.analysis import prepare_uploaded_files
 
 
 app = FastAPI(title="Ghost Test Catcher")
@@ -113,7 +114,7 @@ async def analyze(
         payloads = [(upload.filename or "uploaded-file", await upload.read()) for upload in files]
         prepared_files = prepare_uploaded_files(payloads)
         llm = OpenAIInterface(model_name=model, api_key=api_key, max_tokens=700)
-        result = analyze_uploaded_files(
+        result = generate_and_check(
             files=prepared_files,
             test_mode=test_mode,
             llm=llm,

@@ -9,7 +9,7 @@ include = ["llmSHAP*"]
 [project]
 name = "llmSHAP"
 version = "1.5.2"
-description = "Multi-threaded explainability for LLMs: words, sentences, documents, images, and tools."
+description = "LLM attribution plus Ghost Test Catcher, a trust checker for AI-generated pytest tests."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
@@ -36,14 +36,28 @@ openai     = ["openai", "python-dotenv"]
 embeddings = ["sentence-transformers", "numpy"]
 codebase   = ["openai", "python-dotenv", "scikit-learn"]
 webapp     = ["openai", "python-dotenv", "fastapi", "uvicorn", "python-multipart", "pytest"]
+ghost      = ["pytest"]
 dev        = ["pytest", "matplotlib", "ipywidgets", "sphinx", "myst-parser", "sphinx-book-theme", "sphinx-design"]
 all        = ["openai", "python-dotenv", "numpy", "scikit-learn", "fastapi", "uvicorn", "python-multipart", "pytest"]
 
+[project.scripts]
+ghost-test-catcher = "llmSHAP.ghost.cli:main"
+
 [project.urls]
-Homepage = "https://github.com/filipnaudot/llmSHAP"
-Repository = "https://github.com/filipnaudot/llmSHAP"
+Homepage = "https://github.com/CarlSvaerd/HackathonWasp"
+Repository = "https://github.com/CarlSvaerd/HackathonWasp"
 Documentation = "https://filipnaudot.github.io/llmSHAP/"
-Issues = "https://github.com/filipnaudot/llmSHAP/issues"
+Issues = "https://github.com/CarlSvaerd/HackathonWasp/issues"
+
+[tool.ghost-test-catcher]
+source_paths = ["src"]
+test_paths = ["tests"]
+test_mode = "mixed"
+model = "gpt-4o-mini"
+max_files = 80
+max_chars_per_file = 24000
+max_total_chars = 240000
+execute_tests = true
 
 [tool.pytest.ini_options]
 norecursedirs = ["demo/ghost_test_catcher_sample", "demo/ghost_risk_sample", "demo/allofem"]

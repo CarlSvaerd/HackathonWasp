@@ -500,11 +500,17 @@ def _available_modules(files: list[UploadedContextFile]) -> set[str]:
         if not normalized.endswith(".py"):
             continue
         module = normalized[:-3].replace("/", ".")
-        modules.add(module)
-        parts = module.split(".")
-        for index in range(1, len(parts)):
-            modules.add(".".join(parts[:index]))
+        _add_module_with_parents(modules, module)
+        if module.startswith("src."):
+            _add_module_with_parents(modules, module.removeprefix("src."))
     return modules
+
+
+def _add_module_with_parents(modules: set[str], module: str) -> None:
+    modules.add(module)
+    parts = module.split(".")
+    for index in range(1, len(parts)):
+        modules.add(".".join(parts[:index]))
 
 
 def _is_test_file(path: str) -> bool:
