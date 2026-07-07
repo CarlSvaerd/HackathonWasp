@@ -1,0 +1,129 @@
+{
+  "name": "ghost-test-catcher",
+  "displayName": "Ghost Test Catcher",
+  "description": "Detect whether AI-generated pytest tests are grounded in your actual source code.",
+  "version": "0.1.0",
+  "publisher": "carl-svaerd",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "preview": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CarlSvaerd/HackathonWasp"
+  },
+  "homepage": "https://github.com/CarlSvaerd/HackathonWasp#ghost-test-catcher",
+  "bugs": {
+    "url": "https://github.com/CarlSvaerd/HackathonWasp/issues"
+  },
+  "galleryBanner": {
+    "color": "#111827",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.88.0"
+  },
+  "categories": [
+    "Testing",
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "pytest",
+    "testing",
+    "ai-generated tests",
+    "test verification",
+    "ghost tests",
+    "quality",
+    "ci",
+    "code review"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onLanguage:python",
+    "onCommand:ghostTestCatcher.analyzeCurrentTest",
+    "onCommand:ghostTestCatcher.analyzeChangedTests",
+    "onCommand:ghostTestCatcher.openLastReport"
+  ],
+  "main": "./extension.js",
+  "scripts": {
+    "check": "node --check extension.js && node --check extensionCore.js",
+    "test": "node --test test/*.test.js",
+    "package": "vsce package --no-dependencies --out ghost-test-catcher-0.1.0.vsix"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.6.0"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "ghostTestCatcher.analyzeCurrentTest",
+        "title": "Ghost Test Catcher: Analyze Current Test File"
+      },
+      {
+        "command": "ghostTestCatcher.analyzeChangedTests",
+        "title": "Ghost Test Catcher: Analyze Changed Test Files"
+      },
+      {
+        "command": "ghostTestCatcher.openLastReport",
+        "title": "Ghost Test Catcher: Open Last Report"
+      }
+    ],
+    "configuration": {
+      "title": "Ghost Test Catcher",
+      "properties": {
+        "ghostTestCatcher.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Python executable used to run the Ghost Test Catcher CLI."
+        },
+        "ghostTestCatcher.sourcePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "src"
+          ],
+          "description": "Source/context paths passed to the analyzer."
+        },
+        "ghostTestCatcher.executeTests": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run pytest in an isolated temporary workspace during analysis."
+        },
+        "ghostTestCatcher.confirmExecution": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ask for confirmation before executing generated or selected tests."
+        },
+        "ghostTestCatcher.testMode": {
+          "type": "string",
+          "enum": [
+            "unit",
+            "integration",
+            "e2e",
+            "mixed"
+          ],
+          "default": "mixed",
+          "description": "Expected style of tests being analyzed."
+        },
+        "ghostTestCatcher.maxFiles": {
+          "type": "number",
+          "default": 80,
+          "description": "Maximum source/context files read by the analyzer."
+        }
+      }
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "ghostTestCatcher.analyzeCurrentTest",
+          "when": "resourceLangId == python",
+          "group": "navigation"
+        }
+      ]
+    }
+  }
+}
