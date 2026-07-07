@@ -38,6 +38,7 @@ jobs:
           path: docs/build/html
 
   deploy:
+    if: github.event.repository.has_pages == true
     needs: build
     runs-on: ubuntu-latest
     environment:

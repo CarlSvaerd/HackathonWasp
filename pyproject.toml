@@ -60,4 +60,13 @@ max_total_chars = 240000
 execute_tests = true
 
 [tool.pytest.ini_options]
-norecursedirs = ["demo/ghost_test_catcher_sample", "demo/ghost_risk_sample", "demo/allofem"]
+testpaths = ["tests"]
+norecursedirs = [
+  ".pytest_cache",
+  "build",
+  "dist",
+  "docs/_build",
+  "demo/ghost_test_catcher_sample",
+  "demo/ghost_risk_sample",
+  "demo/allofem",
+]

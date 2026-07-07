@@ -14,7 +14,18 @@ from llmSHAP.webapp.analysis import prepare_uploaded_files
 
 app = FastAPI(title="Ghost Test Catcher")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _find_repo_root() -> Path:
+    module_path = Path(__file__).resolve()
+    candidates = [Path.cwd().resolve(), *Path.cwd().resolve().parents, *module_path.parents]
+    for candidate in candidates:
+        if (candidate / "demo" / "allofem").is_dir() and (candidate / "demo" / "ghost_risk_sample").is_dir():
+            return candidate
+    return module_path.parents[3]
+
+
+REPO_ROOT = _find_repo_root()
 
 
 @dataclass(frozen=True)
