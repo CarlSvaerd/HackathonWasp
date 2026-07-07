@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["llmSHAP*"]
+
+[project]
+name = "llmSHAP"
+version = "1.5.2"
+description = "Multi-threaded explainability for LLMs: words, sentences, documents, images, and tools."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "Filip Naudot" },
+]
+license = "MIT"
+license-files = ["LICENSE"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+  "tqdm",
+]
+
+[project.optional-dependencies]
+openai     = ["openai", "python-dotenv"]
+embeddings = ["sentence-transformers", "numpy"]
+codebase   = ["openai", "python-dotenv", "scikit-learn"]
+webapp     = ["openai", "python-dotenv", "fastapi", "uvicorn", "python-multipart", "pytest"]
+dev        = ["pytest", "matplotlib", "ipywidgets", "sphinx", "myst-parser", "sphinx-book-theme", "sphinx-design"]
+all        = ["openai", "python-dotenv", "numpy", "scikit-learn", "fastapi", "uvicorn", "python-multipart", "pytest"]
+
+[project.urls]
+Homepage = "https://github.com/filipnaudot/llmSHAP"
+Repository = "https://github.com/filipnaudot/llmSHAP"
+Documentation = "https://filipnaudot.github.io/llmSHAP/"
+Issues = "https://github.com/filipnaudot/llmSHAP/issues"
+
+[tool.pytest.ini_options]
+norecursedirs = ["demo/ghost_test_catcher_sample", "demo/ghost_risk_sample", "demo/allofem"]

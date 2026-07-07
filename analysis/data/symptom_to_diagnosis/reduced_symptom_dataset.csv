@@ -1,0 +1,15 @@
+Disease,Symptom_1,Symptom_2,Symptom_3,Symptom_4,Symptom_5,Symptom_6,Symptom_7,Symptom_8,Symptom_9,Symptom_10,Symptom_11,Symptom_12,Symptom_13,Symptom_14,Symptom_15,Symptom_16,Symptom_17,num_symptoms
+Impetigo, high_fever, blister, red_sore_around_nose, yellow_crust_ooze,,,,,,,,,,,,,,4
+Impetigo, skin_rash, high_fever, blister, yellow_crust_ooze,,,,,,,,,,,,,,4
+Dimorphic hemmorhoids(piles), constipation, pain_during_bowel_movements, pain_in_anal_region, bloody_stool, irritation_in_anus,,,,,,,,,,,,,5
+(vertigo) Paroymsal  Positional Vertigo, vomiting, headache, nausea, spinning_movements, loss_of_balance,,,,,,,,,,,,,5
+Bronchial Asthma, fatigue, cough, high_fever, breathlessness, family_history, mucoid_sputum,,,,,,,,,,,,6
+Osteoarthristis, joint_pain, neck_pain, knee_pain, hip_joint_pain, swelling_joints, painful_walking,,,,,,,,,,,,6
+Chronic cholestasis,itching, vomiting, yellowish_skin, nausea, loss_of_appetite, abdominal_pain, yellowing_of_eyes,,,,,,,,,,,7
+Jaundice, vomiting, fatigue, weight_loss, high_fever, yellowish_skin, dark_urine, abdominal_pain,,,,,,,,,,,7
+Migraine, indigestion, headache, blurred_and_distorted_vision, excessive_hunger, stiff_neck, depression, irritability, visual_disturbances,,,,,,,,,,8
+Hepatitis D, joint_pain, vomiting, fatigue, yellowish_skin, dark_urine, nausea, abdominal_pain, yellowing_of_eyes,,,,,,,,,,8
+Migraine, acidity, indigestion, headache, blurred_and_distorted_vision, excessive_hunger, stiff_neck, depression, irritability, visual_disturbances,,,,,,,,,9
+Diabetes , fatigue, restlessness, lethargy, irregular_sugar_level, blurred_and_distorted_vision, obesity, excessive_hunger, increased_appetite, polyuria,,,,,,,,,9
+Typhoid, chills, vomiting, fatigue, high_fever, headache, nausea, constipation, diarrhoea, toxic_look_(typhos), belly_pain,,,,,,,,10
+hepatitis A, joint_pain, vomiting, yellowish_skin, dark_urine, nausea, loss_of_appetite, abdominal_pain, mild_fever, yellowing_of_eyes, muscle_pain,,,,,,,,10
