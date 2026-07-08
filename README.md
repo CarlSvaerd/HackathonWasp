@@ -337,10 +337,13 @@ It provides:
 - `Ghost Test Catcher: Analyze Current Test File`
 - `Ghost Test Catcher: Analyze Changed Test Files`
 - `Ghost Test Catcher: Analyze Selected Files or Folders`
+- `Ghost Test Catcher: Run Doctor`
 - inline diagnostics on `def test_*` functions and class-based test methods
 - CodeLens verdict summaries
 - a report panel with reliability, ETV, framework, test-run status, risk categories, recommendations, evidence, and missing symbols
+- smart source context that resolves local imports from the active test before broader configured source folders
 - nested Python project detection when VS Code is opened at a parent folder
+- a Doctor report for Python path, module importability, CLI config, discovered source paths, and discovered test paths
 
 For local development, open `packages/vscode-extension` in VS Code and run the extension host.
 The extension shells out to:

@@ -38,7 +38,7 @@ npm run package
 code --install-extension packages/vscode-extension/ghost-test-catcher-0.1.0.vsix --force
 ```
 
-After installation, open a Python repository, open a test file, and run `Ghost Test Catcher: Analyze Current Test File` from the command palette. Also select a test file plus a source file in Explorer and run `Ghost Test Catcher: Analyze Selected Files or Folders`. The extension should show diagnostics on risky tests, CodeLens verdicts above tests, and a report panel through `Ghost Test Catcher: Open Last Report`.
+After installation, open a Python repository, open a test file, and run `Ghost Test Catcher: Run Doctor` from the command palette. The Doctor report should show the resolved project root, configured Python path, successful `llmSHAP.ghost.cli` import, source paths, and discovered tests. Then run `Ghost Test Catcher: Analyze Current Test File`. Also select a test file plus a source file in Explorer and run `Ghost Test Catcher: Analyze Selected Files or Folders`. The extension should show diagnostics on risky tests, CodeLens verdicts above tests, and a report panel through `Ghost Test Catcher: Open Last Report`.
 
 ## Marketplace Publishing Notes
 

@@ -89,6 +89,81 @@ function isPythonPath(file) {
   return toPosixPath(file).toLowerCase().endsWith(".py");
 }
 
+function extractPythonImportModules(text) {
+  const modules = new Set();
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.replace(/#.*/, "").trim();
+    if (!line) {
+      continue;
+    }
+
+    const importMatch = /^import\s+(.+)$/.exec(line);
+    if (importMatch) {
+      for (const item of importMatch[1].split(",")) {
+        const moduleName = item.trim().split(/\s+as\s+/i)[0].trim();
+        addImportModule(modules, moduleName);
+      }
+      continue;
+    }
+
+    const fromMatch = /^from\s+([A-Za-z_][A-Za-z0-9_.]*|\.+[A-Za-z_][A-Za-z0-9_.]*)\s+import\s+/.exec(line);
+    if (fromMatch && !fromMatch[1].startsWith(".")) {
+      addImportModule(modules, fromMatch[1]);
+    }
+  }
+  return Array.from(modules).sort();
+}
+
+function addImportModule(modules, moduleName) {
+  if (/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(moduleName)) {
+    modules.add(moduleName);
+  }
+}
+
+function inferSourcePathsFromImports(root, testFile) {
+  if (!fs.existsSync(testFile) || !fs.statSync(testFile).isFile()) {
+    return [];
+  }
+  const text = fs.readFileSync(testFile, "utf-8");
+  return resolveImportModulesToSourcePaths(root, extractPythonImportModules(text));
+}
+
+function resolveImportModulesToSourcePaths(root, modules) {
+  const seen = new Set();
+  const resolved = [];
+  for (const moduleName of modules || []) {
+    const parts = moduleName.split(".");
+    const candidates = [];
+    for (let count = parts.length; count >= 1; count -= 1) {
+      const moduleParts = parts.slice(0, count);
+      candidates.push(...moduleCandidatePaths(root, moduleParts));
+    }
+    for (const candidate of candidates) {
+      if (!fs.existsSync(candidate) || !fs.statSync(candidate).isFile()) {
+        continue;
+      }
+      const relative = relativePathFromRoot(root, candidate);
+      if (!relative || isTestPath(relative) || !isPythonPath(relative) || seen.has(relative)) {
+        continue;
+      }
+      seen.add(relative);
+      resolved.push(relative);
+      break;
+    }
+  }
+  return resolved.sort();
+}
+
+function moduleCandidatePaths(root, moduleParts) {
+  const modulePath = path.join(...moduleParts);
+  return [
+    path.join(root, `${modulePath}.py`),
+    path.join(root, modulePath, "__init__.py"),
+    path.join(root, "src", `${modulePath}.py`),
+    path.join(root, "src", modulePath, "__init__.py"),
+  ];
+}
+
 function findProjectRootForFile(file, workspaceRoot) {
   const resolvedWorkspace = path.resolve(workspaceRoot);
   let cursor = fs.existsSync(file) && fs.statSync(file).isDirectory()
@@ -150,6 +225,21 @@ function toRelativeSourcePaths(root, sourceFiles) {
     }
   }
   return relativePaths;
+}
+
+function mergeSourcePaths(...pathGroups) {
+  const seen = new Set();
+  const merged = [];
+  for (const group of pathGroups) {
+    for (const value of group || []) {
+      const normalized = toPosixPath(String(value)).replace(/^\.\//, "");
+      if (normalized && !seen.has(normalized)) {
+        seen.add(normalized);
+        merged.push(normalized);
+      }
+    }
+  }
+  return merged;
 }
 
 function summarizeReports(reports) {
@@ -215,6 +305,75 @@ function renderReportHtml(reports) {
   ${body}
 </body>
 </html>`;
+}
+
+function renderDoctorHtml(report) {
+  const sourceItems = listItems(report.sourcePaths || []);
+  const inferredItems = listItems(report.inferredSourcePaths || []);
+  const discoveredSourceItems = listItems(report.doctor?.discovered_source_specs || []);
+  const discoveredTestItems = listItems(report.doctor?.discovered_test_specs || []);
+  const config = report.doctor?.config || {};
+  const doctorError = report.doctor?.error
+    ? `<div class="panel"><h2 class="bad">CLI Doctor Error</h2><p>${escapeHtml(report.doctor.error)}</p></div>`
+    : "";
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { margin: 0; padding: 24px; color: #d4d4d4; background: #1e1e1e; font-family: var(--vscode-font-family); }
+    h1, h2, h3 { color: #f3f3f3; margin: 0; }
+    .panel { border: 1px solid #3c3c3c; border-radius: 6px; margin-top: 16px; padding: 16px; background: #252526; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+    .metric { border: 1px solid #3c3c3c; border-radius: 6px; padding: 12px; background: #202020; }
+    .metric span { display: block; color: #9e9e9e; font-size: 12px; margin-bottom: 6px; }
+    code, pre { font-family: var(--vscode-editor-font-family); }
+    code { color: #9cdcfe; }
+    ul { margin: 10px 0 0; padding-left: 18px; }
+    li { margin: 4px 0; word-break: break-all; }
+    .ok { color: #4ec97a; }
+    .bad { color: #e06c75; }
+    .muted { color: #9e9e9e; }
+    @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>Ghost Test Catcher Doctor</h1>
+  <div class="panel">
+    <h2 class="${report.importOk ? "ok" : "bad"}">${report.importOk ? "Ready" : "Needs Setup"}</h2>
+    <p>${escapeHtml(report.importMessage || "")}</p>
+  </div>
+  ${doctorError}
+  <div class="grid">
+    ${metric("Project Root", report.root || "unknown")}
+    ${metric("Python", report.pythonPath || "python")}
+    ${metric("Test Mode", config.test_mode || "mixed")}
+    ${metric("Execution", config.execute_tests ? "enabled" : "disabled")}
+  </div>
+  <div class="panel">
+    <h2>Configured Source Paths</h2>
+    <ul>${sourceItems || "<li class=\"muted\">No configured source paths.</li>"}</ul>
+  </div>
+  <div class="panel">
+    <h2>Inferred Imported Source Files</h2>
+    <ul>${inferredItems || "<li class=\"muted\">No local imports resolved for the active test file.</li>"}</ul>
+  </div>
+  <div class="grid">
+    <div class="panel">
+      <h2>Discovered Sources</h2>
+      <ul>${discoveredSourceItems || "<li class=\"muted\">No sources discovered.</li>"}</ul>
+    </div>
+    <div class="panel">
+      <h2>Discovered Tests</h2>
+      <ul>${discoveredTestItems || "<li class=\"muted\">No tests discovered.</li>"}</ul>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+function listItems(items) {
+  return (items || []).map((item) => `<li><code>${escapeHtml(item)}</code></li>`).join("");
 }
 
 function renderSingleReport(result) {
@@ -313,15 +472,20 @@ function escapeHtml(value) {
 module.exports = {
   buildAnalyzeArgs,
   escapeHtml,
+  extractPythonImportModules,
   findProjectRootForFile,
+  inferSourcePathsFromImports,
   isTestPath,
   isPythonPath,
   mapBy,
+  mergeSourcePaths,
   normalizePath,
   parseTestFunctionLocations,
   percent,
   renderReportHtml,
+  renderDoctorHtml,
   relativePathFromRoot,
+  resolveImportModulesToSourcePaths,
   summarizeReports,
   supportLabel,
   toRelativeSourcePaths,

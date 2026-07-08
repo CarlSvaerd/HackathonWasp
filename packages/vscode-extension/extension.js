@@ -7,6 +7,7 @@ const core = require("./extensionCore");
 let diagnostics;
 let codeLensChanged;
 let reportPanel;
+let doctorPanel;
 let lastReports = [];
 const reportsByFile = new Map();
 
@@ -19,6 +20,7 @@ function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.analyzeCurrentTest", analyzeCurrentTest));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.analyzeChangedTests", analyzeChangedTests));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.analyzeSelectedFiles", analyzeSelectedFiles));
+  context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.runDoctor", runDoctor));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.openLastReport", openLastReport));
   context.subscriptions.push(vscode.languages.registerCodeLensProvider({ language: "python" }, new GhostCodeLensProvider()));
 }
@@ -170,7 +172,13 @@ async function runCli(testFile, executeTests, selectedSourceFiles = []) {
   const root = core.findProjectRootForFile(testFile, workspaceFolder.uri.fsPath);
   const config = getConfig();
   const selectedSourcePaths = core.toRelativeSourcePaths(root, selectedSourceFiles);
-  const sourcePaths = selectedSourcePaths.length ? selectedSourcePaths : config.get("sourcePaths", ["src"]);
+  const configuredSourcePaths = config.get("sourcePaths", ["src"]);
+  const inferredSourcePaths = config.get("smartSourceContext", true)
+    ? core.inferSourcePathsFromImports(root, testFile)
+    : [];
+  const sourcePaths = selectedSourcePaths.length
+    ? selectedSourcePaths
+    : core.mergeSourcePaths(inferredSourcePaths, configuredSourcePaths);
   const args = core.buildAnalyzeArgs({
     root,
     testFile,
@@ -181,9 +189,7 @@ async function runCli(testFile, executeTests, selectedSourceFiles = []) {
   });
 
   const pythonPath = config.get("pythonPath", "python");
-  const env = { ...process.env };
-  const srcPath = path.join(root, "src");
-  env.PYTHONPATH = env.PYTHONPATH ? `${srcPath}${path.delimiter}${env.PYTHONPATH}` : srcPath;
+  const env = buildPythonEnv(root);
 
   const { stdout, stderr } = await execFile(pythonPath, args, {
     cwd: root,
@@ -192,11 +198,114 @@ async function runCli(testFile, executeTests, selectedSourceFiles = []) {
   });
 
   try {
-    return JSON.parse(stdout);
+    const result = JSON.parse(stdout);
+    result.__sourcePaths = sourcePaths;
+    result.__inferredSourcePaths = inferredSourcePaths;
+    return result;
   } catch (error) {
     const detail = stderr ? `${stdout}\n${stderr}` : stdout;
     throw new Error(`Ghost Test Catcher returned invalid JSON.\n${detail}`);
   }
+}
+
+async function runDoctor(uri) {
+  const targetUri = uri?.scheme === "file"
+    ? uri
+    : vscode.window.activeTextEditor?.document.uri;
+  const folder = targetUri
+    ? vscode.workspace.getWorkspaceFolder(targetUri)
+    : getActiveWorkspaceFolder();
+  if (!folder) {
+    vscode.window.showWarningMessage("Open a workspace before running Ghost Test Catcher Doctor.");
+    return;
+  }
+
+  const targetPath = targetUri?.scheme === "file" ? targetUri.fsPath : folder.uri.fsPath;
+  const root = core.findProjectRootForFile(targetPath, folder.uri.fsPath);
+  const config = getConfig();
+  const pythonPath = config.get("pythonPath", "python");
+  const configuredSourcePaths = config.get("sourcePaths", ["src"]);
+  const inferredSourcePaths = targetPath && core.isPythonPath(targetPath) && core.isTestPath(targetPath)
+    ? core.inferSourcePathsFromImports(root, targetPath)
+    : [];
+  const env = buildPythonEnv(root);
+
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: "Running Ghost Test Catcher Doctor",
+      cancellable: false,
+    },
+    async () => {
+      const report = {
+        root,
+        pythonPath,
+        sourcePaths: core.mergeSourcePaths(inferredSourcePaths, configuredSourcePaths),
+        inferredSourcePaths,
+        importOk: false,
+        importMessage: "",
+        doctor: null,
+      };
+
+      try {
+        const importCheck = await execFile(
+          pythonPath,
+          ["-c", "import llmSHAP.ghost.cli as cli; print(cli.__file__)"],
+          { cwd: root, env, maxBuffer: 1024 * 1024, timeout: 20000 }
+        );
+        report.importOk = true;
+        report.importMessage = `Loaded llmSHAP.ghost.cli from ${importCheck.stdout.trim()}.`;
+      } catch (error) {
+        report.importOk = false;
+        report.importMessage = `Could not import llmSHAP.ghost.cli with the configured Python path. ${error.message}`;
+      }
+
+      try {
+        const doctorResult = await execFile(
+          pythonPath,
+          ["-m", "llmSHAP.ghost.cli", "doctor", "--repo", root],
+          { cwd: root, env, maxBuffer: 5 * 1024 * 1024, timeout: 20000 }
+        );
+        report.doctor = JSON.parse(doctorResult.stdout);
+      } catch (error) {
+        report.doctor = {
+          config: {
+            source_paths: configuredSourcePaths,
+            test_paths: [],
+            test_mode: config.get("testMode", "mixed"),
+            execute_tests: config.get("executeTests", true),
+          },
+          discovered_source_specs: [],
+          discovered_test_specs: [],
+          error: error.message,
+        };
+      }
+
+      openDoctorReport(report);
+      vscode.window.showInformationMessage(
+        report.importOk
+          ? "Ghost Test Catcher Doctor: Python module loaded successfully."
+          : "Ghost Test Catcher Doctor: setup issue found."
+      );
+    }
+  );
+}
+
+function openDoctorReport(report) {
+  if (!doctorPanel) {
+    doctorPanel = vscode.window.createWebviewPanel(
+      "ghostTestCatcherDoctor",
+      "Ghost Test Catcher Doctor",
+      vscode.ViewColumn.Beside,
+      { enableScripts: false, retainContextWhenHidden: true }
+    );
+    doctorPanel.onDidDispose(() => {
+      doctorPanel = undefined;
+    });
+  }
+
+  doctorPanel.webview.html = core.renderDoctorHtml(report);
+  doctorPanel.reveal(vscode.ViewColumn.Beside);
 }
 
 function applyDiagnostics(testFile, result) {
@@ -309,6 +418,13 @@ function gitChangedFiles(root) {
   return execFile("git", ["diff", "--name-only", "HEAD"], { cwd: root })
     .then(({ stdout }) => stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean))
     .catch(() => []);
+}
+
+function buildPythonEnv(root) {
+  const env = { ...process.env };
+  const srcPath = path.join(root, "src");
+  env.PYTHONPATH = env.PYTHONPATH ? `${srcPath}${path.delimiter}${env.PYTHONPATH}` : srcPath;
+  return env;
 }
 
 async function expandSelectedPaths(selectedPaths) {

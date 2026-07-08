@@ -46,6 +46,7 @@
     "onCommand:ghostTestCatcher.analyzeCurrentTest",
     "onCommand:ghostTestCatcher.analyzeChangedTests",
     "onCommand:ghostTestCatcher.analyzeSelectedFiles",
+    "onCommand:ghostTestCatcher.runDoctor",
     "onCommand:ghostTestCatcher.openLastReport"
   ],
   "main": "./extension.js",
@@ -72,6 +73,10 @@
         "title": "Ghost Test Catcher: Analyze Selected Files or Folders"
       },
       {
+        "command": "ghostTestCatcher.runDoctor",
+        "title": "Ghost Test Catcher: Run Doctor"
+      },
+      {
         "command": "ghostTestCatcher.openLastReport",
         "title": "Ghost Test Catcher: Open Last Report"
       }
@@ -93,6 +98,11 @@
             "src"
           ],
           "description": "Source/context paths passed to the analyzer."
+        },
+        "ghostTestCatcher.smartSourceContext": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically include local source files imported by the selected test file before the configured source paths."
         },
         "ghostTestCatcher.executeTests": {
           "type": "boolean",
@@ -135,6 +145,11 @@
           "command": "ghostTestCatcher.analyzeSelectedFiles",
           "when": "resourceLangId == python",
           "group": "navigation"
+        },
+        {
+          "command": "ghostTestCatcher.runDoctor",
+          "when": "resourceLangId == python",
+          "group": "navigation@2"
         }
       ],
       "explorer/context": [
@@ -142,6 +157,11 @@
           "command": "ghostTestCatcher.analyzeSelectedFiles",
           "when": "resourceLangId == python || explorerResourceIsFolder",
           "group": "navigation"
+        },
+        {
+          "command": "ghostTestCatcher.runDoctor",
+          "when": "resourceLangId == python || explorerResourceIsFolder",
+          "group": "navigation@2"
         }
       ]
     }

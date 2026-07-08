@@ -7,11 +7,13 @@ Ghost Test Catcher checks whether Python test files are grounded in the source c
 - Analyze the current Python test file from the command palette or editor title.
 - Analyze changed Python test files in the current Git workspace.
 - Analyze selected files or folders from Explorer, including a test file plus specific source files as explicit context.
+- Automatically include local source files imported by the selected test file before broader configured source folders.
 - Run the Python Ghost Test Catcher CLI with JSON output.
 - Show per-test diagnostics directly on `def test_*` functions and `unittest.TestCase` methods.
 - Add CodeLens summaries above analyzed tests.
 - Open a report panel with reliability, ETV, framework, run status, risk categories, recommendations, evidence, and missing symbols.
 - Detect nested Python project roots when VS Code is opened at a parent folder.
+- Run a setup Doctor report that checks project root detection, Python importability, CLI config, discovered sources, and discovered tests.
 
 ## Requirements
 
@@ -28,12 +30,14 @@ During local development from this repository, the extension automatically prepe
 - `Ghost Test Catcher: Analyze Current Test File`
 - `Ghost Test Catcher: Analyze Changed Test Files`
 - `Ghost Test Catcher: Analyze Selected Files or Folders`
+- `Ghost Test Catcher: Run Doctor`
 - `Ghost Test Catcher: Open Last Report`
 
 ## Settings
 
 - `ghostTestCatcher.pythonPath`: Python executable. Defaults to `python`.
 - `ghostTestCatcher.sourcePaths`: source/context paths. Defaults to `["src"]`.
+- `ghostTestCatcher.smartSourceContext`: include local imports from the selected test file before configured source paths. Defaults to `true`.
 - `ghostTestCatcher.executeTests`: run selected Python tests in a temporary workspace. Defaults to `true`.
 - `ghostTestCatcher.confirmExecution`: ask before executing tests. Defaults to `true`.
 - `ghostTestCatcher.testMode`: one of `unit`, `integration`, `e2e`, or `mixed`.

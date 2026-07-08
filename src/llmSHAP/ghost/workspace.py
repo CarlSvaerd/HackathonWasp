@@ -101,10 +101,10 @@ def _resolve_specs(root: Path, specs: Iterable[str]) -> list[Path]:
         if candidate.is_file() and candidate.suffix in PYTHON_EXTENSIONS:
             paths[candidate.as_posix()] = candidate
         elif candidate.is_dir():
-            for path in _iter_python_files(candidate):
+            for path in sorted(_iter_python_files(candidate), key=lambda item: item.as_posix()):
                 if _is_inside(path, root):
                     paths[path.as_posix()] = path
-    return [paths[key] for key in sorted(paths)]
+    return list(paths.values())
 
 
 def _iter_python_files(root: Path):

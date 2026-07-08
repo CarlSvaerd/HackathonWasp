@@ -103,6 +103,50 @@ test("findProjectRootForFile prefers a nested Python project over the open works
   assert.deepEqual(core.toRelativeSourcePaths(project, [path.join(project, "src", "demo.py")]), ["src/demo.py"]);
 });
 
+test("extractPythonImportModules parses direct and from imports", () => {
+  const modules = core.extractPythonImportModules([
+    "import os",
+    "import src.billing as billing, llmSHAP.webapp.execution",
+    "from src.auth import AuthService",
+    "from .local_helpers import fixture_builder",
+    "from llmSHAP.webapp.test_artifacts import parse_python_test_source",
+  ].join("\n"));
+
+  assert.deepEqual(modules, [
+    "llmSHAP.webapp.execution",
+    "llmSHAP.webapp.test_artifacts",
+    "os",
+    "src.auth",
+    "src.billing",
+  ]);
+});
+
+test("resolveImportModulesToSourcePaths finds local source files and skips test files", () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), "ghost-imports-"));
+  fs.mkdirSync(path.join(project, "src", "llmSHAP", "webapp"), { recursive: true });
+  fs.mkdirSync(path.join(project, "tests"), { recursive: true });
+  fs.writeFileSync(path.join(project, "src", "billing.py"), "def charge():\n    return True\n", "utf-8");
+  fs.writeFileSync(path.join(project, "src", "llmSHAP", "webapp", "execution.py"), "def run():\n    return True\n", "utf-8");
+  fs.writeFileSync(path.join(project, "tests", "test_auth.py"), "def test_demo():\n    assert True\n", "utf-8");
+
+  assert.deepEqual(
+    core.resolveImportModulesToSourcePaths(project, [
+      "src.billing",
+      "llmSHAP.webapp.execution",
+      "tests.test_auth",
+      "does.not.exist",
+    ]),
+    ["src/billing.py", "src/llmSHAP/webapp/execution.py"]
+  );
+});
+
+test("mergeSourcePaths keeps inferred files ahead of configured folders", () => {
+  assert.deepEqual(
+    core.mergeSourcePaths(["src/auth.py", "src/billing.py"], ["src", "src/auth.py"]),
+    ["src/auth.py", "src/billing.py", "src"]
+  );
+});
+
 test("summarizeReports groups report verdicts for notifications", () => {
   const summary = core.summarizeReports([
     { trust_assessment: { verdict: "reliable" } },
@@ -116,6 +160,28 @@ test("summarizeReports groups report verdicts for notifications", () => {
     needsReview: 2,
     ghostRisk: 1,
   });
+});
+
+test("renderDoctorHtml escapes setup details and includes inferred source files", () => {
+  const html = core.renderDoctorHtml({
+    root: "C:/repo/<demo>",
+    pythonPath: "python",
+    sourcePaths: ["src/<auth>.py"],
+    inferredSourcePaths: ["src/auth.py"],
+    importOk: false,
+    importMessage: "Could not import <module>",
+    doctor: {
+      config: { test_mode: "mixed", execute_tests: true },
+      discovered_source_specs: ["src/auth.py"],
+      discovered_test_specs: ["tests/test_auth.py"],
+    },
+  });
+
+  assert.ok(html.includes("Ghost Test Catcher Doctor"));
+  assert.ok(html.includes("C:/repo/&lt;demo&gt;"));
+  assert.ok(html.includes("src/&lt;auth&gt;.py"));
+  assert.ok(html.includes("Could not import &lt;module&gt;"));
+  assert.ok(!html.includes("Could not import <module>"));
 });
 
 test("renderReportHtml escapes user-controlled text and includes exact evidence symbols", () => {
