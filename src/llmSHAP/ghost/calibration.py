@@ -192,13 +192,20 @@ def builtin_calibration_cases() -> list[CalibrationCase]:
     ]
 
 
-def run_builtin_calibration(*, execute_tests: bool = True) -> dict:
+def run_builtin_calibration(
+    *,
+    execute_tests: bool = True,
+    execution_backend: str = "local",
+    docker_image: str = "ghost-test-catcher-runner:latest",
+) -> dict:
     cases = []
     for case in builtin_calibration_cases():
         result = analyze_existing_tests(
             test_files=case.test_files,
             context_files=case.source_files,
             execute_tests=execute_tests,
+            execution_backend=execution_backend,
+            docker_image=docker_image,
         )
         actual = result["trust_assessment"]["verdict"]
         cases.append(

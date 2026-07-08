@@ -1,8 +1,9 @@
 const path = require("path");
+const crypto = require("crypto");
 const fs = require("fs");
 const WEBVIEW_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;";
 
-function buildAnalyzeArgs({ root, testFile, sourcePaths, testMode, maxFiles, executeTests }) {
+function buildAnalyzeArgs({ root, testFile, sourcePaths, testMode, maxFiles, executeTests, executionBackend, dockerImage }) {
   const relativeTestFile = toPosixPath(path.relative(root, testFile));
   const args = [
     "-m",
@@ -26,7 +27,117 @@ function buildAnalyzeArgs({ root, testFile, sourcePaths, testMode, maxFiles, exe
   if (!executeTests) {
     args.push("--no-execution");
   }
+  if (executionBackend && executionBackend !== "local") {
+    args.push("--execution-backend", executionBackend);
+  }
+  if (dockerImage) {
+    args.push("--docker-image", dockerImage);
+  }
   return args;
+}
+
+function analysisCacheKey({
+  root,
+  testFile,
+  sourcePaths,
+  testMode,
+  maxFiles,
+  executeTests,
+  pythonPath,
+  executionBackend,
+  dockerImage,
+}) {
+  const payload = {
+    root: normalizePath(root),
+    testFile: normalizePath(testFile),
+    sourcePaths: (sourcePaths || []).map((item) => toPosixPath(String(item))),
+    testMode: testMode || "mixed",
+    maxFiles: Number(maxFiles || 80),
+    executeTests: Boolean(executeTests),
+    pythonPath: String(pythonPath || "python"),
+    executionBackend: String(executionBackend || "local"),
+    dockerImage: String(dockerImage || ""),
+  };
+  return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
+function reportTestNames(result) {
+  return result?.generated_tests?.test_names || [];
+}
+
+function renderGitHubActionsWorkflow({ pythonVersion = "3.11", failOn = "ghost_risk", sourcePaths = ["src"], testPaths = ["tests"] } = {}) {
+  const sourceArgs = cliListArgs("--source", sourcePaths);
+  const testArgs = cliListArgs("--tests", testPaths);
+  return `name: Ghost Test Catcher
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  ghost-test-catcher:
+    name: Verify generated Python tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "${pythonVersion}"
+          cache: pip
+
+      - name: Install package
+        run: python -m pip install -e ".[ghost]"
+
+      - name: Run Ghost Test Catcher CI gate
+        run: |
+          python -m llmSHAP.ghost.cli ci \\
+            --repo . \\
+            ${testArgs} \\
+            ${sourceArgs} \\
+            --no-execution \\
+            --summary ghost-test-catcher-summary.md \\
+            --output ghost-test-catcher-report.json \\
+            --format json \\
+            --fail-on ${failOn}
+
+      - name: Publish job summary
+        if: always()
+        run: |
+          if [ -f ghost-test-catcher-summary.md ]; then
+            cat ghost-test-catcher-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload Ghost Test Catcher report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghost-test-catcher-report
+          path: |
+            ghost-test-catcher-report.json
+            ghost-test-catcher-summary.md
+`;
+}
+
+function cliListArgs(flag, values) {
+  const normalized = (values || []).map((value) => String(value).trim()).filter(Boolean);
+  if (!normalized.length) {
+    return `${flag} .`;
+  }
+  return `${flag} ${normalized.map(shellArg).join(" ")}`;
+}
+
+function shellArg(value) {
+  if (/^[A-Za-z0-9_./:-]+$/.test(value)) {
+    return value;
+  }
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 function parseTestFunctionLocations(text) {
@@ -301,16 +412,23 @@ function mapBy(items, key) {
   return mapped;
 }
 
-function renderReportHtml(reports) {
+function renderReportHtml(reports, options = {}) {
+  const nonce = options.nonce || "";
+  const frameworks = uniqueFrameworks(reports);
   const body = reports.map(renderSingleReport).join("");
   return `<!doctype html>
 <html>
 <head>
   <meta charset="UTF-8">
-  ${webviewCspMeta()}
+  ${webviewCspMeta(nonce)}
   <style>
     body { margin: 0; padding: 24px; color: #d4d4d4; background: #1e1e1e; font-family: var(--vscode-font-family); }
     h1, h2, h3 { color: #f3f3f3; margin: 0; }
+    .toolbar { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 10px; margin: 16px 0 18px; padding: 12px; background: #252526; border: 1px solid #3c3c3c; border-radius: 6px; }
+    .toolbar label { display: grid; gap: 5px; color: #bdbdbd; font-size: 12px; }
+    .toolbar select, .toolbar input { background: #1e1e1e; color: #f3f3f3; border: 1px solid #3c3c3c; border-radius: 4px; padding: 7px; font-family: var(--vscode-font-family); min-width: 0; }
+    .toolbar .check { display: flex; align-items: end; gap: 7px; padding-bottom: 7px; }
+    .toolbar .check input { margin: 0; }
     .report { border: 1px solid #3c3c3c; border-radius: 6px; margin-bottom: 18px; overflow: hidden; }
     .hero { padding: 18px; background: #252526; border-left: 5px solid #6796e6; }
     .hero.reliable { border-left-color: #4ec97a; }
@@ -330,12 +448,21 @@ function renderReportHtml(reports) {
     .evidence { color: #9cdcfe; font-family: var(--vscode-editor-font-family); font-size: 12px; }
     .recommendation { min-width: 220px; }
     .muted { color: #9e9e9e; }
+    details summary { cursor: pointer; color: #9cdcfe; }
+    mark { background: #614b14; color: #f3f3f3; }
+    .hidden { display: none; }
+    .empty-state { border: 1px solid #3c3c3c; border-radius: 6px; padding: 16px; color: #bdbdbd; background: #252526; }
+    @media (max-width: 980px) { .toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 820px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 620px) { .toolbar { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <h1>Ghost Test Catcher</h1>
+  ${renderReportToolbar(frameworks)}
+  <div id="ghost-empty" class="empty-state hidden">No tests match the current filters.</div>
   ${body}
+  ${nonce ? renderReportScript(nonce) : ""}
 </body>
 </html>`;
 }
@@ -406,12 +533,97 @@ function renderDoctorHtml(report) {
 </html>`;
 }
 
-function webviewCspMeta() {
-  return `<meta http-equiv="Content-Security-Policy" content="${WEBVIEW_CSP}">`;
+function webviewCspMeta(nonce = "") {
+  const scriptPolicy = nonce ? ` script-src 'nonce-${nonce}';` : "";
+  return `<meta http-equiv="Content-Security-Policy" content="${WEBVIEW_CSP}${scriptPolicy}">`;
 }
 
 function listItems(items) {
   return (items || []).map((item) => `<li><code>${escapeHtml(item)}</code></li>`).join("");
+}
+
+function renderReportToolbar(frameworks) {
+  const frameworkOptions = frameworks.map((framework) => `<option value="${escapeHtml(framework)}">${escapeHtml(framework)}</option>`).join("");
+  return `<div class="toolbar">
+    <label>Verdict
+      <select id="filter-verdict">
+        <option value="">All verdicts</option>
+        <option value="reliable">Reliable</option>
+        <option value="needs_review">Needs review</option>
+        <option value="ghost_risk">Ghost risk</option>
+      </select>
+    </label>
+    <label>Framework
+      <select id="filter-framework">
+        <option value="">All frameworks</option>
+        ${frameworkOptions}
+      </select>
+    </label>
+    <label>Evidence
+      <input id="filter-evidence" type="search" placeholder="Path, symbol, or test">
+    </label>
+    <label class="check"><input id="filter-missing" type="checkbox"> Missing symbols</label>
+    <label class="check"><input id="filter-failed" type="checkbox"> Failed or risky</label>
+  </div>`;
+}
+
+function renderReportScript(nonce) {
+  return `<script nonce="${escapeHtml(nonce)}">
+(() => {
+  const verdict = document.getElementById("filter-verdict");
+  const framework = document.getElementById("filter-framework");
+  const evidence = document.getElementById("filter-evidence");
+  const missing = document.getElementById("filter-missing");
+  const failed = document.getElementById("filter-failed");
+  const empty = document.getElementById("ghost-empty");
+  const controls = [verdict, framework, evidence, missing, failed];
+
+  function matchesRow(row, reportVerdict) {
+    const evidenceQuery = evidence.value.trim().toLowerCase();
+    if (verdict.value && reportVerdict !== verdict.value) {
+      return false;
+    }
+    if (framework.value && row.dataset.framework !== framework.value) {
+      return false;
+    }
+    if (missing.checked && row.dataset.missing !== "true") {
+      return false;
+    }
+    if (failed.checked && row.dataset.failed !== "true") {
+      return false;
+    }
+    if (evidenceQuery && !row.dataset.search.includes(evidenceQuery)) {
+      return false;
+    }
+    return true;
+  }
+
+  function applyFilters() {
+    let visibleReports = 0;
+    for (const report of document.querySelectorAll(".report")) {
+      let visibleRows = 0;
+      for (const row of report.querySelectorAll("tbody tr[data-test-row='true']")) {
+        const visible = matchesRow(row, report.dataset.verdict || "");
+        row.classList.toggle("hidden", !visible);
+        if (visible) {
+          visibleRows += 1;
+        }
+      }
+      report.classList.toggle("hidden", visibleRows === 0);
+      if (visibleRows > 0) {
+        visibleReports += 1;
+      }
+    }
+    empty.classList.toggle("hidden", visibleReports !== 0);
+  }
+
+  for (const control of controls) {
+    control.addEventListener("input", applyFilters);
+    control.addEventListener("change", applyFilters);
+  }
+  applyFilters();
+})();
+  </script>`;
 }
 
 function renderSingleReport(result) {
@@ -428,20 +640,36 @@ function renderSingleReport(result) {
     const exactEvidence = (check.evidence_symbols || []).join(", ");
     const categories = (check.risk_categories || []).join(", ") || "-";
     const recommendation = check.recommendation || "-";
-    return `<tr>
+    const framework = check.framework || "unknown";
+    const status = check.status || "unsupported";
+    const runStatus = run.status || "unknown";
+    const hasMissing = (check.missing_symbols || []).length > 0;
+    const failedOrRisky = status !== "supported" || ["failed", "error"].includes(runStatus);
+    const search = [
+      name,
+      framework,
+      status,
+      runStatus,
+      evidence,
+      exactEvidence,
+      missing,
+      categories,
+      recommendation,
+    ].join(" ").toLowerCase();
+    return `<tr data-test-row="true" data-framework="${escapeHtml(framework)}" data-missing="${hasMissing ? "true" : "false"}" data-failed="${failedOrRisky ? "true" : "false"}" data-search="${escapeHtml(search)}">
       <td><code>${escapeHtml(name)}</code></td>
-      <td>${escapeHtml(check.framework || "unknown")}</td>
-      <td class="${escapeHtml(check.status || "unsupported")}">${escapeHtml(supportLabel(check.status || "unsupported"))}</td>
+      <td>${escapeHtml(framework)}</td>
+      <td class="${escapeHtml(status)}">${escapeHtml(supportLabel(status))}</td>
       <td>${escapeHtml(percent(Number(check.confidence || 0)))}</td>
-      <td class="${escapeHtml(run.status || "unknown")}">${escapeHtml(run.status || "unknown")}</td>
+      <td class="${escapeHtml(runStatus)}">${escapeHtml(runStatus)}</td>
       <td class="muted">${escapeHtml(categories)}</td>
-      <td class="evidence">${escapeHtml(evidence)}${exactEvidence ? `<br>${escapeHtml(exactEvidence)}` : ""}</td>
+      <td class="evidence"><details><summary>${escapeHtml(evidence)}</summary>${exactEvidence ? `<div>${escapeHtml(exactEvidence)}</div>` : "<div>No exact evidence symbols.</div>"}</details></td>
       <td>${escapeHtml(missing)}</td>
       <td class="recommendation">${escapeHtml(recommendation)}</td>
     </tr>`;
   }).join("");
 
-  return `<section class="report">
+  return `<section class="report" data-verdict="${escapeHtml(trust.verdict || "needs_review")}">
     <div class="hero ${escapeHtml(trust.verdict || "needs_review")}">
       <h2>${escapeHtml(verdictLabel(trust.verdict || "needs_review"))}</h2>
       <div class="path">${escapeHtml(result.__testFile || (result.input_test_files || []).map((item) => item.path).join(", "))}</div>
@@ -460,6 +688,16 @@ function renderSingleReport(result) {
       <tbody>${rows || "<tr><td colspan=\"9\">No Python tests detected.</td></tr>"}</tbody>
     </table>
   </section>`;
+}
+
+function uniqueFrameworks(reports) {
+  const frameworks = new Set();
+  for (const result of reports || []) {
+    for (const check of result.verification?.claim_checks || []) {
+      frameworks.add(check.framework || "unknown");
+    }
+  }
+  return Array.from(frameworks).sort();
 }
 
 function supportLabel(status) {
@@ -508,6 +746,7 @@ function escapeHtml(value) {
 }
 
 module.exports = {
+  analysisCacheKey,
   buildAnalyzeArgs,
   escapeHtml,
   extractPythonImportModules,
@@ -522,6 +761,8 @@ module.exports = {
   normalizePath,
   parseTestFunctionLocations,
   percent,
+  reportTestNames,
+  renderGitHubActionsWorkflow,
   renderReportHtml,
   renderDoctorHtml,
   relativePathFromRoot,

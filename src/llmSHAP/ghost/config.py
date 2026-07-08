@@ -13,6 +13,8 @@ DEFAULT_MODEL = "gpt-4o-mini"
 DEFAULT_MAX_FILES = 80
 DEFAULT_MAX_CHARS_PER_FILE = 24000
 DEFAULT_MAX_TOTAL_CHARS = 240000
+DEFAULT_EXECUTION_BACKEND = "local"
+DEFAULT_DOCKER_IMAGE = "ghost-test-catcher-runner:latest"
 
 
 @dataclass(frozen=True)
@@ -25,6 +27,8 @@ class GhostTestCatcherConfig:
     max_chars_per_file: int = DEFAULT_MAX_CHARS_PER_FILE
     max_total_chars: int = DEFAULT_MAX_TOTAL_CHARS
     execute_tests: bool = True
+    execution_backend: str = DEFAULT_EXECUTION_BACKEND
+    docker_image: str = DEFAULT_DOCKER_IMAGE
 
 
 def load_config(repo_root: str | Path, config_path: str | Path | None = None) -> GhostTestCatcherConfig:
@@ -39,6 +43,8 @@ def load_config(repo_root: str | Path, config_path: str | Path | None = None) ->
         max_chars_per_file=_as_int(payload.get("max_chars_per_file"), DEFAULT_MAX_CHARS_PER_FILE),
         max_total_chars=_as_int(payload.get("max_total_chars"), DEFAULT_MAX_TOTAL_CHARS),
         execute_tests=_as_bool(payload.get("execute_tests"), True),
+        execution_backend=_as_choice(payload.get("execution_backend"), {"local", "docker"}, DEFAULT_EXECUTION_BACKEND),
+        docker_image=str(payload.get("docker_image", DEFAULT_DOCKER_IMAGE)),
     )
 
 
@@ -90,3 +96,10 @@ def _as_bool(value: Any, default: bool) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "on"}
     return bool(value)
+
+
+def _as_choice(value: Any, choices: set[str], default: str) -> str:
+    if value is None:
+        return default
+    parsed = str(value).strip().lower()
+    return parsed if parsed in choices else default

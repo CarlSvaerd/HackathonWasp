@@ -57,7 +57,9 @@
     "onCommand:ghostTestCatcher.analyzeSelectedFiles",
     "onCommand:ghostTestCatcher.runDoctor",
     "onCommand:ghostTestCatcher.openLastReport",
-    "onCommand:ghostTestCatcher.refreshTestExplorer"
+    "onCommand:ghostTestCatcher.refreshTestExplorer",
+    "onCommand:ghostTestCatcher.clearAnalysisCache",
+    "onCommand:ghostTestCatcher.addGitHubActionsGate"
   ],
   "main": "./extension.js",
   "scripts": {
@@ -93,6 +95,14 @@
       {
         "command": "ghostTestCatcher.refreshTestExplorer",
         "title": "Ghost Test Catcher: Refresh Testing Panel"
+      },
+      {
+        "command": "ghostTestCatcher.clearAnalysisCache",
+        "title": "Ghost Test Catcher: Clear Analysis Cache"
+      },
+      {
+        "command": "ghostTestCatcher.addGitHubActionsGate",
+        "title": "Ghost Test Catcher: Add GitHub Actions Gate"
       }
     ],
     "configuration": {
@@ -133,6 +143,20 @@
           "default": true,
           "description": "Ask for confirmation before executing generated or selected tests."
         },
+        "ghostTestCatcher.executionBackend": {
+          "type": "string",
+          "enum": [
+            "local",
+            "docker"
+          ],
+          "default": "local",
+          "description": "Execution backend for selected Python tests. Docker runs the temporary test workspace in a container image that must include Python and pytest."
+        },
+        "ghostTestCatcher.dockerImage": {
+          "type": "string",
+          "default": "ghost-test-catcher-runner:latest",
+          "description": "Docker image used when ghostTestCatcher.executionBackend is set to docker."
+        },
         "ghostTestCatcher.testMode": {
           "type": "string",
           "enum": [
@@ -149,10 +173,45 @@
           "default": 80,
           "description": "Maximum source/context files read by the analyzer."
         },
+        "ghostTestCatcher.analysisCacheEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Cache valid Ghost Test Catcher reports in VS Code workspace state and restore diagnostics after reload."
+        },
+        "ghostTestCatcher.cacheFingerprintLimit": {
+          "type": "number",
+          "default": 300,
+          "description": "Maximum Python files fingerprinted per analysis result before caching is skipped."
+        },
         "ghostTestCatcher.testDiscoveryLimit": {
           "type": "number",
           "default": 500,
           "description": "Maximum Python files scanned when populating the VS Code Testing panel."
+        },
+        "ghostTestCatcher.ciFailOn": {
+          "type": "string",
+          "enum": [
+            "ghost_risk",
+            "needs_review",
+            "never"
+          ],
+          "default": "ghost_risk",
+          "description": "Failure policy used by the generated GitHub Actions gate."
+        },
+        "ghostTestCatcher.ciPythonVersion": {
+          "type": "string",
+          "default": "3.11",
+          "description": "Python version used by the generated GitHub Actions gate."
+        },
+        "ghostTestCatcher.ciTestPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "tests"
+          ],
+          "description": "Test paths used by the generated GitHub Actions gate."
         }
       }
     },

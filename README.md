@@ -113,6 +113,22 @@ pytest -vv -rA
 
 Pytest is used as the execution engine because it can collect both pytest-style `def test_*` functions and `unittest.TestCase` methods. That gives the product one isolated execution path while supporting both common Python test styles.
 
+For stricter local isolation, existing-test analysis also supports a Docker execution backend. Build the included pytest runner image first:
+
+```bash
+docker build -t ghost-test-catcher-runner:latest docker/ghost-test-catcher-runner
+
+ghost-test-catcher analyze \
+  --repo . \
+  --tests tests/test_webapp_execution.py \
+  --source src \
+  --execution-backend docker \
+  --docker-image ghost-test-catcher-runner:latest \
+  --format pretty
+```
+
+The Docker image must include Python and pytest. The included runner image does exactly that. The container runner mounts the temporary test workspace and disables network access.
+
 This produces:
 
 - per-test execution status,
@@ -342,7 +358,11 @@ It provides:
 - CodeLens verdict summaries
 - native VS Code Testing panel discovery for pytest-style functions and `unittest.TestCase` methods
 - an `Analyze with Ghost Test Catcher` Testing panel run profile
-- a report panel with reliability, ETV, framework, test-run status, risk categories, recommendations, evidence, and missing symbols
+- a filterable report panel with reliability, ETV, framework, test-run status, risk categories, recommendations, evidence, and missing symbols
+- persistent workspace report caching that restores diagnostics and CodeLens after reloads
+- Quick Fix actions to open evidence files, copy missing symbols, and rerun static analysis
+- a GitHub Actions gate generator for `ghost-test-catcher ci`
+- optional Docker-backed execution from the extension
 - smart source context that resolves local imports from the active test before broader configured source folders
 - nested Python project detection when VS Code is opened at a parent folder
 - a Doctor report for Python path, module importability, CLI config, discovered source paths, and discovered test paths
@@ -368,6 +388,7 @@ When execution is enabled, the Python test runner runs against a temporary copy 
 The extension asks for confirmation before executing tests by default.
 If VS Code marks the workspace as untrusted, the extension will not execute tests while `ghostTestCatcher.requireWorkspaceTrustForExecution` is enabled. It offers to run static grounding analysis instead.
 The Testing panel uses the same execution and trust rules as the command palette commands.
+The extension caches valid reports using source/test file fingerprints and invalidates that cache when relevant Python files change.
 
 Package the extension locally with:
 
@@ -434,6 +455,10 @@ This project uses the underlying attribution framework in the codebase as an int
 The product focus of this repo is now Ghost Test Catcher itself:
 
 > a trust and verification workflow for AI-generated software tests.
+
+## Language Adapter Boundary
+
+The analyzer is Python-first, but the ghost package now exposes a language adapter boundary through `llmSHAP.ghost.adapters`. The active `PythonAdapter` owns Python source/test path detection and supported execution backend names. Future JavaScript or TypeScript support should add a new adapter with parser, test discovery, runner, grounding extractor, and execution result normalization behind the same interface.
 
 ## Current Status
 

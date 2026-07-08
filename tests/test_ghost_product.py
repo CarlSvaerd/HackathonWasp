@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from llmSHAP.ghost.adapters import available_language_adapters, get_language_adapter
 from llmSHAP.ghost.analysis import analyze_existing_tests
 from llmSHAP.ghost.calibration import run_builtin_calibration
 from llmSHAP.ghost.cli import main
@@ -99,6 +100,68 @@ def test_cli_analyze_outputs_json_for_existing_tests(tmp_path, capsys) -> None:
     assert payload["analysis_mode"] == "analyze_existing_tests"
     assert payload["generated_tests"]["test_count"] == 1
     assert payload["execution"]["status"] == "passed"
+
+
+def test_cli_analyze_accepts_docker_backend_for_static_analysis(tmp_path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "src").mkdir()
+    (repo / "tests").mkdir()
+    (repo / "src" / "calculator.py").write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
+    (repo / "tests" / "test_calculator.py").write_text(
+        "from src.calculator import add\n\n\ndef test_add_returns_sum():\n    assert add(2, 3) == 5\n",
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "analyze",
+            "--repo",
+            str(repo),
+            "--tests",
+            "tests/test_calculator.py",
+            "--source",
+            "src",
+            "--no-execution",
+            "--execution-backend",
+            "docker",
+            "--docker-image",
+            "python:3.11-slim",
+            "--format",
+            "json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["execution"]["status"] == "skipped"
+    assert payload["execution"]["execution_backend"] == "docker"
+
+
+def test_python_language_adapter_identifies_supported_paths() -> None:
+    adapter = get_language_adapter("python")
+
+    assert adapter.is_test_path("tests/test_checkout.py") is True
+    assert adapter.is_test_path("src/checkout_test.py") is True
+    assert adapter.is_test_path("src/checkout.py") is False
+    assert adapter.is_source_path("src/checkout.py") is True
+    assert adapter.is_source_path("tests/test_checkout.py") is False
+    assert adapter.execution_backend_names() == ("local", "docker")
+    assert [item.language_id for item in available_language_adapters()] == ["python"]
+
+
+def test_cli_doctor_lists_language_adapters(tmp_path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    exit_code = main(["doctor", "--repo", str(repo)])
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["language_adapters"][0]["language_id"] == "python"
+    assert "docker" in payload["language_adapters"][0]["execution_backends"]
 
 
 def test_cli_ci_writes_markdown_summary_and_passes_grounded_tests(tmp_path, capsys) -> None:

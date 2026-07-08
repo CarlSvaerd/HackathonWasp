@@ -7,6 +7,7 @@ import subprocess
 import sys
 from typing import Any
 
+from llmSHAP.ghost.adapters import available_language_adapters, get_language_adapter
 from llmSHAP.ghost.analysis import analyze_existing_tests, generate_and_check
 from llmSHAP.ghost.calibration import run_builtin_calibration
 from llmSHAP.ghost.config import GhostTestCatcherConfig, load_config
@@ -25,6 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--tests", nargs="+", help="Test file or directory paths to analyze.")
     analyze.add_argument("--source", nargs="*", help="Source/context file or directory paths.")
     analyze.add_argument("--no-execution", action="store_true", help="Skip Python test execution and run static checks only.")
+    _add_execution_args(analyze)
     analyze.add_argument("--strict-exit", action="store_true", help="Exit 2 for non-reliable results.")
     analyze.set_defaults(handler=_handle_analyze)
 
@@ -35,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     ci.add_argument("--changed-from", help="Git ref used to select changed Python test files, for example origin/main.")
     ci.add_argument("--summary", help="Write a Markdown CI summary to this path.")
     ci.add_argument("--no-execution", action="store_true", help="Skip Python test execution and run static checks only.")
+    _add_execution_args(ci)
     ci.add_argument(
         "--fail-on",
         choices=["ghost_risk", "needs_review", "never"],
@@ -67,6 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     calibrate.add_argument("--format", choices=["pretty", "json"], default="pretty", help="Output format.")
     calibrate.add_argument("--output", help="Write JSON payload to this path.")
     calibrate.add_argument("--no-execution", action="store_true", help="Skip Python test execution and run static checks only.")
+    _add_execution_args(calibrate)
     calibrate.set_defaults(handler=_handle_calibrate)
 
     return parser
@@ -98,6 +102,15 @@ def _add_common_project_args(parser: argparse.ArgumentParser, *, include_output:
         parser.add_argument("--output", help="Write JSON payload to this path.")
 
 
+def _add_execution_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--execution-backend",
+        choices=["local", "docker"],
+        help="Execution backend for Python tests. Docker requires an image with Python and pytest installed.",
+    )
+    parser.add_argument("--docker-image", help="Docker image used when --execution-backend docker is selected.")
+
+
 def _handle_analyze(args: argparse.Namespace) -> int:
     repo_root, config = _resolve_config(args)
     test_specs = args.tests or discover_test_specs(repo_root, config)
@@ -123,6 +136,8 @@ def _handle_analyze(args: argparse.Namespace) -> int:
         context_files=context_files,
         test_mode=args.test_mode or config.test_mode,
         execute_tests=config.execute_tests and not args.no_execution,
+        execution_backend=args.execution_backend or config.execution_backend,
+        docker_image=args.docker_image or config.docker_image,
     )
     result["ok"] = True
     result["repo_root"] = str(repo_root)
@@ -166,6 +181,8 @@ def _handle_ci(args: argparse.Namespace) -> int:
             context_files=context_files,
             test_mode=args.test_mode or config.test_mode,
             execute_tests=config.execute_tests and not args.no_execution,
+            execution_backend=args.execution_backend or config.execution_backend,
+            docker_image=args.docker_image or config.docker_image,
         )
         result["repo_root"] = str(repo_root)
         result["source_specs"] = source_specs
@@ -229,7 +246,19 @@ def _handle_doctor(args: argparse.Namespace) -> int:
             "max_chars_per_file": config.max_chars_per_file,
             "max_total_chars": config.max_total_chars,
             "execute_tests": config.execute_tests,
+            "execution_backend": config.execution_backend,
+            "docker_image": config.docker_image,
         },
+        "language_adapters": [
+            {
+                "language_id": adapter.language_id,
+                "display_name": adapter.display_name,
+                "source_extensions": list(adapter.source_extensions),
+                "test_extensions": list(adapter.test_extensions),
+                "execution_backends": list(adapter.execution_backend_names()),
+            }
+            for adapter in available_language_adapters()
+        ],
         "discovered_source_specs": discover_source_specs(repo_root, config),
         "discovered_test_specs": discover_test_specs(repo_root, config),
     }
@@ -238,7 +267,11 @@ def _handle_doctor(args: argparse.Namespace) -> int:
 
 
 def _handle_calibrate(args: argparse.Namespace) -> int:
-    result = run_builtin_calibration(execute_tests=not args.no_execution)
+    result = run_builtin_calibration(
+        execute_tests=not args.no_execution,
+        execution_backend=args.execution_backend or "local",
+        docker_image=args.docker_image or "ghost-test-catcher-runner:latest",
+    )
     if args.format == "json" or args.output:
         _emit_json(result, args.output)
     else:
@@ -454,14 +487,7 @@ def _git_changed_paths(repo_root: Path, revision_range: str) -> list[str]:
 
 
 def _looks_like_test_path(path: str) -> bool:
-    normalized = path.replace("\\", "/").lower()
-    filename = normalized.rsplit("/", 1)[-1]
-    return (
-        normalized.startswith("tests/")
-        or "/tests/" in normalized
-        or filename.startswith("test_")
-        or filename.endswith("_test.py")
-    )
+    return get_language_adapter("python").is_test_path(path)
 
 
 def _render_markdown_summary(result: dict[str, Any]) -> str:

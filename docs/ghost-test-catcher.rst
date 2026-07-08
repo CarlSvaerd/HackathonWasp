@@ -38,6 +38,20 @@ JSON output is intended for editor integrations and CI:
      --source src \
      --format json
 
+Containerized execution is available for existing-test analysis when Docker is
+installed. Build the included pytest runner image first:
+
+.. code-block:: bash
+
+   docker build -t ghost-test-catcher-runner:latest docker/ghost-test-catcher-runner
+   ghost-test-catcher analyze \
+     --repo . \
+     --tests tests/test_auth.py \
+     --source src \
+     --execution-backend docker \
+     --docker-image ghost-test-catcher-runner:latest \
+     --format pretty
+
 Calibration
 -----------
 
@@ -85,7 +99,11 @@ The extension provides:
 * CodeLens verdicts
 * native VS Code Testing panel discovery for pytest-style functions and ``unittest.TestCase`` methods
 * an ``Analyze with Ghost Test Catcher`` Testing panel run profile
-* a report panel with reliability, ETV, framework, execution status, risk categories, recommendations, evidence, and missing symbols
+* a filterable report panel with reliability, ETV, framework, execution status, risk categories, recommendations, evidence, and missing symbols
+* persistent workspace report caching with file fingerprint invalidation
+* Quick Fix actions for opening evidence files, copying missing symbols, and rerunning static analysis
+* a GitHub Actions workflow generator for ``ghost-test-catcher ci``
+* optional Docker-backed execution
 * smart source context that resolves local imports from the active test before broader configured source folders
 * nested Python project root detection when VS Code is opened at a parent folder
 * a Doctor report for Python path, module importability, CLI config, discovered source paths, and discovered test paths
@@ -134,6 +152,8 @@ Configuration can live in ``pyproject.toml``:
    max_chars_per_file = 24000
    max_total_chars = 240000
    execute_tests = true
+   execution_backend = "local"
+   docker_image = "ghost-test-catcher-runner:latest"
 
 Safety
 ------
@@ -155,3 +175,8 @@ The Testing panel integration uses the same CLI analyzer as the command
 palette commands. Grounded and executed tests appear as passed, unsupported or
 borderline tests appear as failed with a review message, and grounded tests
 with execution disabled appear as skipped.
+
+The Python package exposes a language adapter boundary in
+``llmSHAP.ghost.adapters``. The active adapter is ``PythonAdapter``; future
+JavaScript or TypeScript support should add a new adapter for path detection,
+parsing, execution, grounding extraction, and result normalization.

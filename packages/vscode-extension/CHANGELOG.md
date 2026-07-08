@@ -7,6 +7,11 @@
 - Added `Ghost Test Catcher: Analyze Selected Files or Folders` for Explorer and editor selections.
 - Added `Ghost Test Catcher: Run Doctor` for project root, Python path, importability, and config diagnostics.
 - Added native VS Code Testing panel discovery and an `Analyze with Ghost Test Catcher` test run profile.
+- Added persistent workspace analysis caching with mtime/size invalidation and cache restore after reload.
+- Added report filtering for verdict, framework, missing symbols, failed/risky tests, and evidence text.
+- Added Quick Fix actions for opening evidence files, copying missing symbols, and rerunning static analysis.
+- Added `Ghost Test Catcher: Add GitHub Actions Gate` to generate a CI workflow.
+- Added optional Docker execution backend settings.
 - Added cancellable analysis and Doctor progress with timeout-backed Python process termination.
 - Added a `Ghost Test Catcher` output channel for CLI process starts, stderr, and failure details.
 - Added limited VS Code Workspace Trust support that blocks test execution in untrusted workspaces and offers static analysis instead.

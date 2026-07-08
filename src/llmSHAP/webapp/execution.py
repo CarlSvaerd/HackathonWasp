@@ -30,15 +30,43 @@ PRIMARY_FAILURE_PATTERNS = [
 ]
 
 
-def run_generated_tests(answer: str, files: list[UploadedContextFile]) -> dict:
-    return _run_parsed_tests(parse_generated_tests(answer), files)
+def run_generated_tests(
+    answer: str,
+    files: list[UploadedContextFile],
+    *,
+    execution_backend: str = "local",
+    docker_image: str = "ghost-test-catcher-runner:latest",
+) -> dict:
+    return _run_parsed_tests(
+        parse_generated_tests(answer),
+        files,
+        execution_backend=execution_backend,
+        docker_image=docker_image,
+    )
 
 
-def run_python_test_source(test_source: str, files: list[UploadedContextFile]) -> dict:
-    return _run_parsed_tests(parse_python_test_source(test_source), files)
+def run_python_test_source(
+    test_source: str,
+    files: list[UploadedContextFile],
+    *,
+    execution_backend: str = "local",
+    docker_image: str = "ghost-test-catcher-runner:latest",
+) -> dict:
+    return _run_parsed_tests(
+        parse_python_test_source(test_source),
+        files,
+        execution_backend=execution_backend,
+        docker_image=docker_image,
+    )
 
 
-def _run_parsed_tests(parsed: dict, files: list[UploadedContextFile]) -> dict:
+def _run_parsed_tests(
+    parsed: dict,
+    files: list[UploadedContextFile],
+    *,
+    execution_backend: str,
+    docker_image: str,
+) -> dict:
     if parsed["syntax_error"]:
         return {
             "status": "invalid_test_code",
@@ -88,16 +116,42 @@ def _run_parsed_tests(parsed: dict, files: list[UploadedContextFile]) -> dict:
         env["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
         env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
         try:
-            completed = _run_pytest(generated_test_path, root, env)
+            completed = _run_pytest(
+                generated_test_path,
+                root,
+                env,
+                execution_backend=execution_backend,
+                docker_image=docker_image,
+            )
         except subprocess.TimeoutExpired:
             return {
                 "status": "timeout",
                 "message": "Python test execution timed out.",
+                "execution_backend": execution_backend,
                 "pytest_summary": "",
                 "per_test_results": [],
                 "passed": 0,
                 "failed": 0,
                 "errors": 0,
+                "test_count": len(parsed["test_cases"]),
+                "extracted_code": test_code,
+            }
+        except (OSError, ValueError) as exc:
+            return {
+                "status": "error",
+                "message": f"Python test execution could not start with backend '{execution_backend}': {exc}",
+                "execution_backend": execution_backend,
+                "pytest_summary": "",
+                "per_test_results": [
+                    {
+                        "name": test_case.name,
+                        "status": "error",
+                    }
+                    for test_case in parsed["test_cases"]
+                ],
+                "passed": 0,
+                "failed": 0,
+                "errors": len(parsed["test_cases"]),
                 "test_count": len(parsed["test_cases"]),
                 "extracted_code": test_code,
             }
@@ -125,6 +179,7 @@ def _run_parsed_tests(parsed: dict, files: list[UploadedContextFile]) -> dict:
     return {
         "status": status,
         "message": message,
+        "execution_backend": execution_backend,
         "primary_failure": "" if status == "passed" else _extract_primary_failure(combined_output),
         "pytest_summary": combined_output,
         "per_test_results": per_test_results,
@@ -136,7 +191,22 @@ def _run_parsed_tests(parsed: dict, files: list[UploadedContextFile]) -> dict:
     }
 
 
-def _run_pytest(test_path: Path, root: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+def _run_pytest(
+    test_path: Path,
+    root: Path,
+    env: dict[str, str],
+    *,
+    execution_backend: str,
+    docker_image: str,
+) -> subprocess.CompletedProcess[str]:
+    if execution_backend == "local":
+        return _run_local_pytest(test_path, root, env)
+    if execution_backend == "docker":
+        return _run_docker_pytest(test_path, root, docker_image)
+    raise ValueError(f"Unsupported execution backend: {execution_backend}")
+
+
+def _run_local_pytest(test_path: Path, root: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "pytest", "-vv", "-rA", str(test_path.name)],
         cwd=str(test_path.parent),
@@ -144,6 +214,36 @@ def _run_pytest(test_path: Path, root: Path, env: dict[str, str]) -> subprocess.
         capture_output=True,
         text=True,
         timeout=20,
+    )
+
+
+def _run_docker_pytest(test_path: Path, root: Path, docker_image: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "-e",
+            "PYTHONPATH=/workspace:/workspace/src",
+            "-e",
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
+            "-v",
+            f"{root.resolve()}:/workspace",
+            "-w",
+            "/workspace/generated_tests",
+            docker_image,
+            "python",
+            "-m",
+            "pytest",
+            "-vv",
+            "-rA",
+            test_path.name,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
 
 

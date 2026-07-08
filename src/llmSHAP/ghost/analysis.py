@@ -41,6 +41,8 @@ def analyze_existing_tests(
     context_files: list[UploadedContextFile],
     test_mode: str = "mixed",
     execute_tests: bool = True,
+    execution_backend: str = "local",
+    docker_image: str = "ghost-test-catcher-runner:latest",
 ) -> dict:
     if not test_files:
         raise ValueError("At least one test file is required.")
@@ -52,7 +54,16 @@ def analyze_existing_tests(
     answer = _combine_test_files(test_files)
     extracted_tests = parse_python_test_source(answer)
     verification = verify_python_test_source_grounding(answer, context_files)
-    execution = run_python_test_source(answer, context_files) if execute_tests else _skipped_execution(extracted_tests)
+    execution = (
+        run_python_test_source(
+            answer,
+            context_files,
+            execution_backend=execution_backend,
+            docker_image=docker_image,
+        )
+        if execute_tests
+        else _skipped_execution(extracted_tests, execution_backend=execution_backend)
+    )
     preflight = _build_preflight_assessment(extracted_tests, verification, context_files)
     weighted_files = _build_static_weighted_files(context_files, answer)
     statistics = _build_statistics(
@@ -137,10 +148,11 @@ def _build_static_weighted_files(files: list[UploadedContextFile], answer: str) 
     return weighted_files
 
 
-def _skipped_execution(extracted_tests: dict) -> dict:
+def _skipped_execution(extracted_tests: dict, *, execution_backend: str = "local") -> dict:
     return {
         "status": "skipped",
         "message": "Python test execution was skipped by configuration.",
+        "execution_backend": execution_backend,
         "primary_failure": "",
         "pytest_summary": "",
         "per_test_results": [

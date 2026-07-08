@@ -1,9 +1,11 @@
 const vscode = require("vscode");
 const childProcess = require("child_process");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const core = require("./extensionCore");
 
+let extensionContext;
 let diagnostics;
 let codeLensChanged;
 let reportPanel;
@@ -15,14 +17,20 @@ let lastReports = [];
 const reportsByFile = new Map();
 const testItemMetadataById = new Map();
 const pendingTestRefreshes = new Map();
+const analysisCache = new Map();
+const quickFixContextByDiagnosticKey = new Map();
 const ANALYSIS_TIMEOUT_MS = 120000;
 const DOCTOR_TIMEOUT_MS = 30000;
 const TEST_REFRESH_DELAY_MS = 250;
+const ANALYSIS_CACHE_STORAGE_KEY = "ghostTestCatcher.analysisCache.v1";
+const ANALYSIS_CACHE_MAX_ENTRIES = 100;
 
 function activate(context) {
+  extensionContext = context;
   diagnostics = vscode.languages.createDiagnosticCollection("ghost-test-catcher");
   codeLensChanged = new vscode.EventEmitter();
   outputChannel = vscode.window.createOutputChannel("Ghost Test Catcher");
+  loadAnalysisCache();
 
   context.subscriptions.push(diagnostics);
   context.subscriptions.push(codeLensChanged);
@@ -33,8 +41,19 @@ function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.runDoctor", runDoctor));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.openLastReport", openLastReport));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.refreshTestExplorer", refreshTestExplorer));
+  context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.clearAnalysisCache", clearAnalysisCache));
+  context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.addGitHubActionsGate", addGitHubActionsGate));
+  context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.openEvidence", openEvidence));
+  context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.copyMissingSymbols", copyMissingSymbols));
+  context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.runStaticAnalysisForFile", runStaticAnalysisForFile));
   context.subscriptions.push(vscode.languages.registerCodeLensProvider({ language: "python" }, new GhostCodeLensProvider()));
+  context.subscriptions.push(vscode.languages.registerCodeActionsProvider(
+    { language: "python" },
+    new GhostCodeActionProvider(),
+    { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }
+  ));
   setupTestController(context);
+  restoreCachedReports().catch((error) => logOutput(`Failed to restore cached reports: ${error.message}`));
 }
 
 function deactivate() {
@@ -67,9 +86,9 @@ function setupTestController(context) {
   );
 
   const watcher = vscode.workspace.createFileSystemWatcher("**/*.py");
-  watcher.onDidCreate(scheduleTestFileRefresh, null, context.subscriptions);
-  watcher.onDidChange(scheduleTestFileRefresh, null, context.subscriptions);
-  watcher.onDidDelete((uri) => removeTestFileItem(uri.fsPath), null, context.subscriptions);
+  watcher.onDidCreate(handlePythonFileChanged, null, context.subscriptions);
+  watcher.onDidChange(handlePythonFileChanged, null, context.subscriptions);
+  watcher.onDidDelete(handlePythonFileDeleted, null, context.subscriptions);
 
   context.subscriptions.push(testController);
   context.subscriptions.push(testRunProfile);
@@ -79,6 +98,89 @@ function setupTestController(context) {
 async function refreshTestExplorer() {
   await discoverWorkspaceTests();
   vscode.window.showInformationMessage("Ghost Test Catcher refreshed the Testing panel.");
+}
+
+async function clearAnalysisCache() {
+  analysisCache.clear();
+  await persistAnalysisCache();
+  vscode.window.showInformationMessage("Ghost Test Catcher analysis cache cleared.");
+}
+
+async function addGitHubActionsGate() {
+  const folder = getActiveWorkspaceFolder();
+  if (!folder) {
+    vscode.window.showWarningMessage("Open a workspace before adding the Ghost Test Catcher GitHub Actions gate.");
+    return;
+  }
+
+  const config = getConfig();
+  const workflowPath = path.join(folder.uri.fsPath, ".github", "workflows", "ghost-test-catcher.yml");
+  if (fs.existsSync(workflowPath)) {
+    const choice = await vscode.window.showWarningMessage(
+      "A Ghost Test Catcher GitHub Actions workflow already exists. Overwrite it?",
+      { modal: false },
+      "Overwrite",
+      "Cancel"
+    );
+    if (choice !== "Overwrite") {
+      return;
+    }
+  }
+
+  const content = core.renderGitHubActionsWorkflow({
+    pythonVersion: config.get("ciPythonVersion", "3.11"),
+    failOn: config.get("ciFailOn", "ghost_risk"),
+    sourcePaths: config.get("sourcePaths", ["src"]),
+    testPaths: config.get("ciTestPaths", ["tests"]),
+  });
+  await fs.promises.mkdir(path.dirname(workflowPath), { recursive: true });
+  await fs.promises.writeFile(workflowPath, content, "utf-8");
+  const document = await vscode.workspace.openTextDocument(vscode.Uri.file(workflowPath));
+  await vscode.window.showTextDocument(document, vscode.ViewColumn.Beside);
+  vscode.window.showInformationMessage("Ghost Test Catcher GitHub Actions gate added.");
+}
+
+async function openEvidence(testFile, evidence) {
+  if (!evidence?.path) {
+    vscode.window.showWarningMessage("No evidence file is available for this Ghost Test Catcher diagnostic.");
+    return;
+  }
+  const workspaceFolder = getWorkspaceFolderForFile(testFile);
+  const root = workspaceFolder
+    ? core.findProjectRootForFile(testFile, workspaceFolder.uri.fsPath)
+    : path.dirname(testFile);
+  const evidencePath = path.isAbsolute(evidence.path) ? evidence.path : path.join(root, evidence.path);
+  if (!fs.existsSync(evidencePath)) {
+    vscode.window.showWarningMessage(`Ghost Test Catcher evidence file does not exist: ${evidence.path}`);
+    return;
+  }
+  const document = await vscode.workspace.openTextDocument(vscode.Uri.file(evidencePath));
+  const editor = await vscode.window.showTextDocument(document, vscode.ViewColumn.Beside);
+  const line = Math.min(document.lineCount - 1, Math.max(0, Number(evidence.start_line || 1) - 1));
+  const range = new vscode.Range(line, 0, line, Math.max(1, document.lineAt(line).text.length));
+  editor.selection = new vscode.Selection(range.start, range.end);
+  editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+}
+
+async function copyMissingSymbols(symbols) {
+  const missing = Array.isArray(symbols) ? symbols.filter(Boolean) : [];
+  if (!missing.length) {
+    vscode.window.showInformationMessage("No missing symbols were recorded for this Ghost Test Catcher diagnostic.");
+    return;
+  }
+  await vscode.env.clipboard.writeText(missing.join("\n"));
+  vscode.window.showInformationMessage(`Copied ${missing.length} missing symbol${missing.length === 1 ? "" : "s"} from Ghost Test Catcher.`);
+}
+
+async function runStaticAnalysisForFile(testFile) {
+  if (!testFile || !fs.existsSync(testFile)) {
+    vscode.window.showWarningMessage("Ghost Test Catcher could not find the selected test file for static analysis.");
+    return;
+  }
+  await analyzeFiles([testFile], "Running static Ghost Test Catcher analysis", {
+    executeTestsOverride: false,
+    skipExecutionPrompt: true,
+  });
 }
 
 async function analyzeCurrentTest() {
@@ -163,7 +265,7 @@ async function analyzeSelectedFiles(uri, selectedUris) {
 }
 
 async function analyzeFiles(testFiles, title, options = {}) {
-  const executionMode = await resolveExecutionMode();
+  const executionMode = await resolveExecutionMode(options);
   if (!executionMode) {
     return;
   }
@@ -220,9 +322,11 @@ async function analyzeFiles(testFiles, title, options = {}) {
   );
 }
 
-async function resolveExecutionMode() {
+async function resolveExecutionMode(options = {}) {
   const config = getConfig();
-  let executeTests = config.get("executeTests", true);
+  let executeTests = typeof options.executeTestsOverride === "boolean"
+    ? options.executeTestsOverride
+    : config.get("executeTests", true);
   const confirmExecution = config.get("confirmExecution", true);
   const requireWorkspaceTrust = config.get("requireWorkspaceTrustForExecution", true);
 
@@ -239,7 +343,7 @@ async function resolveExecutionMode() {
     executeTests = false;
   }
 
-  if (executeTests && confirmExecution) {
+  if (executeTests && confirmExecution && !options.skipExecutionPrompt) {
     const choice = await vscode.window.showWarningMessage(
       "Ghost Test Catcher will execute Python tests against a temporary copy of the selected tests and source files.",
       { modal: false },
@@ -270,18 +374,50 @@ async function runCli(testFile, executeTests, selectedSourceFiles = [], token) {
   const sourcePaths = selectedSourcePaths.length
     ? selectedSourcePaths
     : core.mergeSourcePaths(inferredSourcePaths, configuredSourcePaths);
+  const testMode = config.get("testMode", "mixed");
+  const maxFiles = config.get("maxFiles", 80);
+  const executionBackend = config.get("executionBackend", "local");
+  const dockerImage = executionBackend === "docker" ? config.get("dockerImage", "ghost-test-catcher-runner:latest") : "";
   const args = core.buildAnalyzeArgs({
     root,
     testFile,
     sourcePaths,
-    testMode: config.get("testMode", "mixed"),
-    maxFiles: config.get("maxFiles", 80),
+    testMode,
+    maxFiles,
     executeTests,
+    executionBackend,
+    dockerImage,
   });
 
   const pythonPath = config.get("pythonPath", "python");
   const env = buildPythonEnv(root);
   const label = `analysis for ${path.relative(root, testFile)}`;
+  const cacheMetadata = {
+    root,
+    testFile,
+    sourcePaths,
+    testMode,
+    maxFiles,
+    executeTests,
+    pythonPath,
+    executionBackend,
+    dockerImage,
+  };
+  const cacheEnabled = config.get("analysisCacheEnabled", true);
+  const cacheKey = core.analysisCacheKey(cacheMetadata);
+  const fingerprints = cacheEnabled
+    ? await buildAnalysisFingerprints(root, testFile, sourcePaths, config.get("cacheFingerprintLimit", 300))
+    : null;
+  if (cacheEnabled && fingerprints) {
+    const cached = readCachedAnalysis(cacheKey, fingerprints);
+    if (cached) {
+      logOutput(`Using cached ${label}.`);
+      cached.__sourcePaths = sourcePaths;
+      cached.__inferredSourcePaths = inferredSourcePaths;
+      cached.__cacheHit = true;
+      return cached;
+    }
+  }
 
   const { stdout, stderr } = await execFile(pythonPath, args, {
     cwd: root,
@@ -296,12 +432,200 @@ async function runCli(testFile, executeTests, selectedSourceFiles = [], token) {
     const result = JSON.parse(stdout);
     result.__sourcePaths = sourcePaths;
     result.__inferredSourcePaths = inferredSourcePaths;
+    result.__cacheHit = false;
+    if (cacheEnabled && fingerprints) {
+      await writeCachedAnalysis(cacheKey, cacheMetadata, fingerprints, result);
+    }
     return result;
   } catch (error) {
     const detail = stderr ? `${stdout}\n${stderr}` : stdout;
     logOutput(`Invalid JSON from ${label}:\n${detail}`);
     throw new Error(`Ghost Test Catcher returned invalid JSON.\n${detail}`);
   }
+}
+
+function loadAnalysisCache() {
+  analysisCache.clear();
+  const entries = extensionContext?.workspaceState.get(ANALYSIS_CACHE_STORAGE_KEY, []) || [];
+  for (const entry of entries) {
+    if (entry && entry.key && entry.result && entry.fingerprints && entry.metadata) {
+      analysisCache.set(entry.key, entry);
+    }
+  }
+}
+
+async function persistAnalysisCache() {
+  if (!extensionContext) {
+    return;
+  }
+  const entries = Array.from(analysisCache.values())
+    .sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0))
+    .slice(0, ANALYSIS_CACHE_MAX_ENTRIES);
+  await extensionContext.workspaceState.update(ANALYSIS_CACHE_STORAGE_KEY, entries);
+}
+
+async function restoreCachedReports() {
+  const restored = [];
+  let pruned = false;
+  for (const [key, entry] of analysisCache.entries()) {
+    const metadata = entry.metadata || {};
+    if (!metadata.root || !metadata.testFile || !Array.isArray(metadata.sourcePaths)) {
+      analysisCache.delete(key);
+      pruned = true;
+      continue;
+    }
+
+    const fingerprints = await buildAnalysisFingerprints(
+      metadata.root,
+      metadata.testFile,
+      metadata.sourcePaths,
+      getConfig().get("cacheFingerprintLimit", 300)
+    );
+    if (!fingerprints || !fingerprintsEqual(fingerprints, entry.fingerprints)) {
+      analysisCache.delete(key);
+      pruned = true;
+      continue;
+    }
+
+    const result = cloneJson(entry.result);
+    result.__testFile = metadata.testFile;
+    result.__sourcePaths = metadata.sourcePaths;
+    result.__inferredSourcePaths = result.__inferredSourcePaths || [];
+    result.__cacheHit = true;
+    reportsByFile.set(core.normalizePath(metadata.testFile), result);
+    try {
+      applyDiagnostics(metadata.testFile, result);
+      restored.push(result);
+    } catch (error) {
+      logOutput(`Could not restore cached diagnostics for ${metadata.testFile}: ${error.message}`);
+    }
+  }
+  if (restored.length) {
+    lastReports = restored
+      .sort((left, right) => String(left.__testFile || "").localeCompare(String(right.__testFile || "")))
+      .slice(0, 20);
+    codeLensChanged.fire();
+    logOutput(`Restored ${restored.length} cached Ghost Test Catcher report${restored.length === 1 ? "" : "s"}.`);
+  }
+  if (pruned) {
+    await persistAnalysisCache();
+  }
+}
+
+function readCachedAnalysis(cacheKey, fingerprints) {
+  const entry = analysisCache.get(cacheKey);
+  if (!entry || !fingerprintsEqual(fingerprints, entry.fingerprints)) {
+    return null;
+  }
+  entry.updatedAt = Date.now();
+  persistAnalysisCache().catch((error) => logOutput(`Failed to update cache recency: ${error.message}`));
+  return cloneJson(entry.result);
+}
+
+async function writeCachedAnalysis(cacheKey, metadata, fingerprints, result) {
+  analysisCache.set(cacheKey, {
+    key: cacheKey,
+    metadata: cloneJson(metadata),
+    fingerprints,
+    result: cloneJson(result),
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+  await persistAnalysisCache();
+}
+
+async function buildAnalysisFingerprints(root, testFile, sourcePaths, limit) {
+  const entries = [];
+  const state = { count: 0, limit: Number(limit || 300), exceeded: false };
+  await addFingerprintForPath(entries, testFile, state);
+  for (const sourcePath of sourcePaths || []) {
+    const absolute = path.isAbsolute(sourcePath) ? sourcePath : path.join(root, sourcePath);
+    await addFingerprintForPath(entries, absolute, state);
+    if (state.exceeded) {
+      logOutput(`Skipping analysis cache because source fingerprinting exceeded ${state.limit} files.`);
+      return null;
+    }
+  }
+  return entries.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+async function addFingerprintForPath(entries, targetPath, state) {
+  if (state.exceeded) {
+    return;
+  }
+  let stats;
+  try {
+    stats = await fs.promises.stat(targetPath);
+  } catch {
+    entries.push({ path: core.normalizePath(targetPath), missing: true });
+    return;
+  }
+
+  if (stats.isDirectory()) {
+    entries.push(fingerprintEntry(targetPath, stats, "directory"));
+    const files = [];
+    await collectFingerprintFiles(targetPath, files, state);
+    for (const file of files) {
+      if (state.exceeded) {
+        return;
+      }
+      await addFingerprintForPath(entries, file, state);
+    }
+    return;
+  }
+
+  if (stats.isFile()) {
+    state.count += 1;
+    if (state.count > state.limit) {
+      state.exceeded = true;
+      return;
+    }
+    entries.push(fingerprintEntry(targetPath, stats, "file"));
+  }
+}
+
+async function collectFingerprintFiles(directory, files, state) {
+  if (state.exceeded || shouldSkipDirectory(directory)) {
+    return;
+  }
+  let entries;
+  try {
+    entries = await fs.promises.readdir(directory, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  entries.sort((left, right) => left.name.localeCompare(right.name));
+  for (const entry of entries) {
+    const absolute = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      await collectFingerprintFiles(absolute, files, state);
+      continue;
+    }
+    if (entry.isFile() && core.isPythonPath(absolute)) {
+      files.push(absolute);
+      if (files.length > state.limit) {
+        state.exceeded = true;
+        return;
+      }
+    }
+  }
+}
+
+function fingerprintEntry(file, stats, kind) {
+  return {
+    path: core.normalizePath(file),
+    kind,
+    mtimeMs: Math.round(Number(stats.mtimeMs || 0)),
+    size: Number(stats.size || 0),
+  };
+}
+
+function fingerprintsEqual(left, right) {
+  return JSON.stringify(left || []) === JSON.stringify(right || []);
+}
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 async function discoverWorkspaceTests() {
@@ -608,6 +932,55 @@ function knownTestControllerFiles() {
   return files;
 }
 
+function handlePythonFileChanged(uri) {
+  if (!uri || uri.scheme !== "file") {
+    return;
+  }
+  invalidateAnalysisCacheForPath(uri.fsPath);
+  if (core.isTestPath(uri.fsPath)) {
+    diagnostics.delete(uri);
+    reportsByFile.delete(core.normalizePath(uri.fsPath));
+    clearQuickFixContextsForFile(uri.fsPath);
+    codeLensChanged.fire();
+  }
+  scheduleTestFileRefresh(uri);
+}
+
+function handlePythonFileDeleted(uri) {
+  if (!uri || uri.scheme !== "file") {
+    return;
+  }
+  invalidateAnalysisCacheForPath(uri.fsPath);
+  diagnostics.delete(uri);
+  reportsByFile.delete(core.normalizePath(uri.fsPath));
+  clearQuickFixContextsForFile(uri.fsPath);
+  removeTestFileItem(uri.fsPath);
+  codeLensChanged.fire();
+}
+
+function invalidateAnalysisCacheForPath(changedPath) {
+  const normalized = core.normalizePath(changedPath);
+  let changed = false;
+  for (const [key, entry] of analysisCache.entries()) {
+    const metadata = entry.metadata || {};
+    const root = metadata.root || "";
+    const testFile = metadata.testFile || "";
+    const sourcePaths = metadata.sourcePaths || [];
+    const fingerprintHit = (entry.fingerprints || []).some((item) => item.path === normalized);
+    const sourceSpecHit = sourcePaths.some((sourcePath) => {
+      const absolute = path.isAbsolute(sourcePath) ? sourcePath : path.join(root, sourcePath);
+      return isInsideOrEqualPath(changedPath, absolute);
+    });
+    if (core.normalizePath(testFile) === normalized || fingerprintHit || sourceSpecHit) {
+      analysisCache.delete(key);
+      changed = true;
+    }
+  }
+  if (changed) {
+    persistAnalysisCache().catch((error) => logOutput(`Failed to persist cache invalidation: ${error.message}`));
+  }
+}
+
 function scheduleTestFileRefresh(uri) {
   if (!uri || uri.scheme !== "file" || !core.isPythonPath(uri.fsPath)) {
     return;
@@ -787,6 +1160,7 @@ function applyDiagnostics(testFile, result) {
   const runs = core.mapBy(result.execution?.per_test_results || [], "name");
   const names = result.generated_tests?.test_names || [];
   const fileDiagnostics = [];
+  clearQuickFixContextsForFile(testFile);
 
   for (const name of names) {
     const check = checks.get(name) || {};
@@ -808,6 +1182,12 @@ function applyDiagnostics(testFile, result) {
     diagnostic.source = "Ghost Test Catcher";
     diagnostic.code = "ghost-test-catcher";
     fileDiagnostics.push(diagnostic);
+    quickFixContextByDiagnosticKey.set(diagnosticContextKey(testFile, diagnostic), {
+      testFile,
+      name,
+      evidence: check.evidence || null,
+      missingSymbols: missing,
+    });
   }
 
   diagnostics.set(uri, fileDiagnostics);
@@ -825,14 +1205,14 @@ function openLastReport(explicitResult) {
       "ghostTestCatcherReport",
       "Ghost Test Catcher",
       vscode.ViewColumn.Beside,
-      { enableScripts: false, retainContextWhenHidden: true, localResourceRoots: [] }
+      { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] }
     );
     reportPanel.onDidDispose(() => {
       reportPanel = undefined;
     });
   }
 
-  reportPanel.webview.html = core.renderReportHtml(reports);
+  reportPanel.webview.html = core.renderReportHtml(reports, { nonce: createNonce() });
   reportPanel.reveal(vscode.ViewColumn.Beside);
 }
 
@@ -863,6 +1243,53 @@ class GhostCodeLensProvider {
   }
 }
 
+class GhostCodeActionProvider {
+  provideCodeActions(document, range, context) {
+    const actions = [];
+    for (const diagnostic of context.diagnostics || []) {
+      if (diagnostic.source !== "Ghost Test Catcher") {
+        continue;
+      }
+      const quickFixContext = quickFixContextByDiagnosticKey.get(diagnosticContextKey(document.uri.fsPath, diagnostic));
+      if (!quickFixContext) {
+        continue;
+      }
+
+      if (quickFixContext.evidence?.path) {
+        const openEvidenceAction = new vscode.CodeAction("Ghost Test Catcher: Open Evidence File", vscode.CodeActionKind.QuickFix);
+        openEvidenceAction.command = {
+          title: "Open Evidence File",
+          command: "ghostTestCatcher.openEvidence",
+          arguments: [quickFixContext.testFile, quickFixContext.evidence],
+        };
+        openEvidenceAction.diagnostics = [diagnostic];
+        actions.push(openEvidenceAction);
+      }
+
+      if (quickFixContext.missingSymbols?.length) {
+        const copySymbolsAction = new vscode.CodeAction("Ghost Test Catcher: Copy Missing Symbols", vscode.CodeActionKind.QuickFix);
+        copySymbolsAction.command = {
+          title: "Copy Missing Symbols",
+          command: "ghostTestCatcher.copyMissingSymbols",
+          arguments: [quickFixContext.missingSymbols],
+        };
+        copySymbolsAction.diagnostics = [diagnostic];
+        actions.push(copySymbolsAction);
+      }
+
+      const staticAction = new vscode.CodeAction("Ghost Test Catcher: Run Static Analysis Only", vscode.CodeActionKind.QuickFix);
+      staticAction.command = {
+        title: "Run Static Analysis Only",
+        command: "ghostTestCatcher.runStaticAnalysisForFile",
+        arguments: [quickFixContext.testFile],
+      };
+      staticAction.diagnostics = [diagnostic];
+      actions.push(staticAction);
+    }
+    return actions;
+  }
+}
+
 function findTestFunctions(text) {
   const locations = new Map();
   for (const item of core.parseTestFunctionLocations(text)) {
@@ -883,6 +1310,27 @@ function diagnosticSeverity(groundedStatus, executionStatus) {
     return vscode.DiagnosticSeverity.Warning;
   }
   return vscode.DiagnosticSeverity.Information;
+}
+
+function diagnosticContextKey(testFile, diagnostic) {
+  const range = diagnostic.range;
+  return [
+    core.normalizePath(testFile),
+    range.start.line,
+    range.start.character,
+    range.end.line,
+    range.end.character,
+    diagnostic.message,
+  ].join("|");
+}
+
+function clearQuickFixContextsForFile(testFile) {
+  const prefix = `${core.normalizePath(testFile)}|`;
+  for (const key of Array.from(quickFixContextByDiagnosticKey.keys())) {
+    if (key.startsWith(prefix)) {
+      quickFixContextByDiagnosticKey.delete(key);
+    }
+  }
 }
 
 function gitChangedFiles(root) {
@@ -1123,6 +1571,15 @@ function appendOutput(message) {
   if (outputChannel) {
     outputChannel.append(String(message));
   }
+}
+
+function createNonce() {
+  return crypto.randomBytes(16).toString("base64").replace(/[^A-Za-z0-9]/g, "");
+}
+
+function isInsideOrEqualPath(child, parent) {
+  const relative = path.relative(path.resolve(parent), path.resolve(child));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 function getConfig() {

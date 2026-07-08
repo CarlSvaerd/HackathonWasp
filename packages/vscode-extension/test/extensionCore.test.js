@@ -18,6 +18,8 @@ test("buildAnalyzeArgs creates the CLI contract used by the extension", () => {
     testMode: "integration",
     maxFiles: 42,
     executeTests: false,
+    executionBackend: "docker",
+    dockerImage: "python:3.11-slim",
   });
 
   assert.deepEqual(args.slice(0, 8), [
@@ -32,9 +34,39 @@ test("buildAnalyzeArgs creates the CLI contract used by the extension", () => {
   ]);
   assert.equal(args[8], "tests/test_auth.py");
   assert.ok(args.includes("--no-execution"));
+  assert.deepEqual(args.slice(args.indexOf("--execution-backend"), args.indexOf("--execution-backend") + 2), ["--execution-backend", "docker"]);
+  assert.deepEqual(args.slice(args.indexOf("--docker-image"), args.indexOf("--docker-image") + 2), ["--docker-image", "python:3.11-slim"]);
   assert.ok(args.includes("integration"));
   assert.ok(args.includes("42"));
   assert.deepEqual(args.slice(args.indexOf("--source"), args.indexOf("--source") + 3), ["--source", "src", "lib"]);
+});
+
+test("analysisCacheKey is stable for the same analysis inputs and changes for meaningful settings", () => {
+  const root = path.join("C:", "workspace", "project");
+  const testFile = path.join(root, "tests", "test_auth.py");
+  const base = {
+    root,
+    testFile,
+    sourcePaths: ["src/auth.py", "src"],
+    testMode: "mixed",
+    maxFiles: 80,
+    executeTests: true,
+    pythonPath: "python",
+    executionBackend: "local",
+    dockerImage: "",
+  };
+
+  assert.equal(core.analysisCacheKey(base), core.analysisCacheKey({ ...base }));
+  assert.notEqual(core.analysisCacheKey(base), core.analysisCacheKey({ ...base, executeTests: false }));
+  assert.notEqual(core.analysisCacheKey(base), core.analysisCacheKey({ ...base, sourcePaths: ["src"] }));
+  assert.notEqual(core.analysisCacheKey(base), core.analysisCacheKey({ ...base, testMode: "unit" }));
+  assert.notEqual(core.analysisCacheKey(base), core.analysisCacheKey({ ...base, executionBackend: "docker" }));
+});
+
+test("reportTestNames safely reads generated test names", () => {
+  assert.deepEqual(core.reportTestNames({ generated_tests: { test_names: ["test_a"] } }), ["test_a"]);
+  assert.deepEqual(core.reportTestNames({}), []);
+  assert.deepEqual(core.reportTestNames(null), []);
 });
 
 test("parseTestFunctionLocations returns stable line ranges", () => {
@@ -201,10 +233,29 @@ test("package manifest declares limited workspace trust and guarded execution", 
     true
   );
   assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.refreshTestExplorer"));
+  assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.clearAnalysisCache"));
+  assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.addGitHubActionsGate"));
   assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.refreshTestExplorer"));
+  assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.addGitHubActionsGate"));
   assert.equal(
     manifest.contributes.configuration.properties["ghostTestCatcher.testDiscoveryLimit"].default,
     500
+  );
+  assert.equal(
+    manifest.contributes.configuration.properties["ghostTestCatcher.analysisCacheEnabled"].default,
+    true
+  );
+  assert.equal(
+    manifest.contributes.configuration.properties["ghostTestCatcher.executionBackend"].default,
+    "local"
+  );
+  assert.equal(
+    manifest.contributes.configuration.properties["ghostTestCatcher.dockerImage"].default,
+    "ghost-test-catcher-runner:latest"
+  );
+  assert.equal(
+    manifest.contributes.configuration.properties["ghostTestCatcher.ciFailOn"].default,
+    "ghost_risk"
   );
 });
 
@@ -270,6 +321,8 @@ test("renderReportHtml escapes user-controlled text and includes exact evidence 
   assert.ok(html.includes("Ghost Test Catcher"));
   assert.ok(html.includes("Content-Security-Policy"));
   assert.ok(html.includes("default-src 'none'"));
+  assert.ok(html.includes("filter-verdict"));
+  assert.ok(html.includes("data-test-row=\"true\""));
   assert.ok(html.includes("tests/test_&lt;auth&gt;.py"));
   assert.ok(html.includes("Review &lt;script&gt;alert(1)&lt;/script&gt;"));
   assert.ok(html.includes("login -&gt; src/auth.py:1"));
@@ -277,4 +330,36 @@ test("renderReportHtml escapes user-controlled text and includes exact evidence 
   assert.ok(html.includes("missing_symbols"));
   assert.ok(html.includes("Point the test at APIs"));
   assert.ok(!html.includes("<script>alert(1)</script>"));
+});
+
+test("renderReportHtml includes nonce-scoped filtering script when requested", () => {
+  const html = core.renderReportHtml([
+    {
+      trust_assessment: { verdict: "reliable", components: {} },
+      execution: { status: "passed", per_test_results: [{ name: "test_ok", status: "passed" }] },
+      generated_tests: { test_names: ["test_ok"] },
+      verification: { claim_checks: [{ claim: "test_ok", status: "supported", framework: "pytest", confidence: 1 }] },
+    },
+  ], { nonce: "abc123" });
+
+  assert.ok(html.includes("script-src 'nonce-abc123'"));
+  assert.ok(html.includes("<script nonce=\"abc123\">"));
+});
+
+test("renderGitHubActionsWorkflow creates a deployable CI gate", () => {
+  const workflow = core.renderGitHubActionsWorkflow({
+    pythonVersion: "3.12",
+    failOn: "needs_review",
+    sourcePaths: ["src", "lib"],
+    testPaths: ["tests"],
+  });
+
+  assert.ok(workflow.includes("name: Ghost Test Catcher"));
+  assert.ok(workflow.includes("actions/checkout@v4"));
+  assert.ok(workflow.includes("python-version: \"3.12\""));
+  assert.ok(workflow.includes("python -m llmSHAP.ghost.cli ci"));
+  assert.ok(workflow.includes("--source src lib"));
+  assert.ok(workflow.includes("--tests tests"));
+  assert.ok(workflow.includes("--fail-on needs_review"));
+  assert.ok(workflow.includes("actions/upload-artifact@v4"));
 });
