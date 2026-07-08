@@ -12,6 +12,8 @@ Ghost Test Catcher checks whether Python test files are grounded in the source c
 - Show per-test diagnostics directly on `def test_*` functions and `unittest.TestCase` methods.
 - Add CodeLens summaries above analyzed tests.
 - Open a report panel with reliability, ETV, framework, run status, risk categories, recommendations, evidence, and missing symbols.
+- Populate VS Code's native Testing panel with discovered pytest-style functions and `unittest.TestCase` methods.
+- Run `Analyze with Ghost Test Catcher` directly from the Testing panel and show native pass/fail/skipped results for each test.
 - Detect nested Python project roots when VS Code is opened at a parent folder.
 - Run a setup Doctor report that checks project root detection, Python importability, CLI config, discovered sources, and discovered tests.
 - Cancel long-running analysis and Doctor runs from the VS Code progress notification.
@@ -35,6 +37,7 @@ During local development from this repository, the extension automatically prepe
 - `Ghost Test Catcher: Analyze Selected Files or Folders`
 - `Ghost Test Catcher: Run Doctor`
 - `Ghost Test Catcher: Open Last Report`
+- `Ghost Test Catcher: Refresh Testing Panel`
 
 ## Settings
 
@@ -46,6 +49,13 @@ During local development from this repository, the extension automatically prepe
 - `ghostTestCatcher.confirmExecution`: ask before executing tests. Defaults to `true`.
 - `ghostTestCatcher.testMode`: one of `unit`, `integration`, `e2e`, or `mixed`.
 - `ghostTestCatcher.maxFiles`: maximum source/context files read.
+- `ghostTestCatcher.testDiscoveryLimit`: maximum Python files scanned when populating the VS Code Testing panel. Defaults to `500`.
+
+## Testing Panel
+
+Open VS Code's Testing view to see Python test files discovered by Ghost Test Catcher. The extension adds one file-level item per test file and one child item per detected `def test_*`, async test function, or direct `unittest.TestCase` method.
+
+Use the `Analyze with Ghost Test Catcher` run profile from the Testing panel to run grounding analysis through the same CLI path used by the command palette. Grounded and executed tests are marked as passed, unsupported or borderline tests are marked as failed with a detailed message, and grounded tests with execution disabled are marked as skipped. The run also refreshes diagnostics, CodeLens results, and the last report.
 
 ## Security Model
 

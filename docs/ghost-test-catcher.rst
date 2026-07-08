@@ -83,6 +83,8 @@ The extension provides:
 * ``Ghost Test Catcher: Run Doctor``
 * inline diagnostics on pytest-style functions and ``unittest.TestCase`` methods
 * CodeLens verdicts
+* native VS Code Testing panel discovery for pytest-style functions and ``unittest.TestCase`` methods
+* an ``Analyze with Ghost Test Catcher`` Testing panel run profile
 * a report panel with reliability, ETV, framework, execution status, risk categories, recommendations, evidence, and missing symbols
 * smart source context that resolves local imports from the active test before broader configured source folders
 * nested Python project root detection when VS Code is opened at a parent folder
@@ -148,3 +150,8 @@ The VS Code extension declares limited untrusted-workspace support. When
 execution is blocked in untrusted workspaces and the extension offers static
 grounding analysis instead. Report webviews disable scripts, deny local
 resource roots, and include a restrictive Content Security Policy.
+
+The Testing panel integration uses the same CLI analyzer as the command
+palette commands. Grounded and executed tests appear as passed, unsupported or
+borderline tests appear as failed with a review message, and grounded tests
+with execution disabled appear as skipped.

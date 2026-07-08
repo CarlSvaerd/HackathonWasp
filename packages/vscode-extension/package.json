@@ -56,7 +56,8 @@
     "onCommand:ghostTestCatcher.analyzeChangedTests",
     "onCommand:ghostTestCatcher.analyzeSelectedFiles",
     "onCommand:ghostTestCatcher.runDoctor",
-    "onCommand:ghostTestCatcher.openLastReport"
+    "onCommand:ghostTestCatcher.openLastReport",
+    "onCommand:ghostTestCatcher.refreshTestExplorer"
   ],
   "main": "./extension.js",
   "scripts": {
@@ -88,6 +89,10 @@
       {
         "command": "ghostTestCatcher.openLastReport",
         "title": "Ghost Test Catcher: Open Last Report"
+      },
+      {
+        "command": "ghostTestCatcher.refreshTestExplorer",
+        "title": "Ghost Test Catcher: Refresh Testing Panel"
       }
     ],
     "configuration": {
@@ -143,6 +148,11 @@
           "type": "number",
           "default": 80,
           "description": "Maximum source/context files read by the analyzer."
+        },
+        "ghostTestCatcher.testDiscoveryLimit": {
+          "type": "number",
+          "default": 500,
+          "description": "Maximum Python files scanned when populating the VS Code Testing panel."
         }
       }
     },

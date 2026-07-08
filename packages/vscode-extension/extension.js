@@ -9,10 +9,15 @@ let codeLensChanged;
 let reportPanel;
 let doctorPanel;
 let outputChannel;
+let testController;
+let testRunProfile;
 let lastReports = [];
 const reportsByFile = new Map();
+const testItemMetadataById = new Map();
+const pendingTestRefreshes = new Map();
 const ANALYSIS_TIMEOUT_MS = 120000;
 const DOCTOR_TIMEOUT_MS = 30000;
+const TEST_REFRESH_DELAY_MS = 250;
 
 function activate(context) {
   diagnostics = vscode.languages.createDiagnosticCollection("ghost-test-catcher");
@@ -27,13 +32,53 @@ function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.analyzeSelectedFiles", analyzeSelectedFiles));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.runDoctor", runDoctor));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.openLastReport", openLastReport));
+  context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.refreshTestExplorer", refreshTestExplorer));
   context.subscriptions.push(vscode.languages.registerCodeLensProvider({ language: "python" }, new GhostCodeLensProvider()));
+  setupTestController(context);
 }
 
 function deactivate() {
   if (diagnostics) {
     diagnostics.clear();
   }
+  for (const timer of pendingTestRefreshes.values()) {
+    clearTimeout(timer);
+  }
+  pendingTestRefreshes.clear();
+}
+
+function setupTestController(context) {
+  testController = vscode.tests.createTestController("ghostTestCatcher", "Ghost Test Catcher");
+  testController.resolveHandler = async (item) => {
+    if (!item) {
+      await discoverWorkspaceTests();
+      return;
+    }
+    const metadata = testItemMetadataById.get(item.id);
+    if (metadata?.type === "file" && item.uri) {
+      await refreshTestFile(item.uri);
+    }
+  };
+  testRunProfile = testController.createRunProfile(
+    "Analyze with Ghost Test Catcher",
+    vscode.TestRunProfileKind.Run,
+    runNativeTestAnalysis,
+    true
+  );
+
+  const watcher = vscode.workspace.createFileSystemWatcher("**/*.py");
+  watcher.onDidCreate(scheduleTestFileRefresh, null, context.subscriptions);
+  watcher.onDidChange(scheduleTestFileRefresh, null, context.subscriptions);
+  watcher.onDidDelete((uri) => removeTestFileItem(uri.fsPath), null, context.subscriptions);
+
+  context.subscriptions.push(testController);
+  context.subscriptions.push(testRunProfile);
+  context.subscriptions.push(watcher);
+}
+
+async function refreshTestExplorer() {
+  await discoverWorkspaceTests();
+  vscode.window.showInformationMessage("Ghost Test Catcher refreshed the Testing panel.");
 }
 
 async function analyzeCurrentTest() {
@@ -118,35 +163,11 @@ async function analyzeSelectedFiles(uri, selectedUris) {
 }
 
 async function analyzeFiles(testFiles, title, options = {}) {
-  const config = getConfig();
-  let executeTests = config.get("executeTests", true);
-  const confirmExecution = config.get("confirmExecution", true);
-  const requireWorkspaceTrust = config.get("requireWorkspaceTrustForExecution", true);
-
-  if (executeTests && requireWorkspaceTrust && !vscode.workspace.isTrusted) {
-    const choice = await vscode.window.showWarningMessage(
-      "Ghost Test Catcher will not execute Python tests in an untrusted workspace. Run static analysis only instead?",
-      { modal: false },
-      "Run Static Analysis",
-      "Cancel"
-    );
-    if (choice !== "Run Static Analysis") {
-      return;
-    }
-    executeTests = false;
+  const executionMode = await resolveExecutionMode();
+  if (!executionMode) {
+    return;
   }
-
-  if (executeTests && confirmExecution) {
-    const choice = await vscode.window.showWarningMessage(
-      "Ghost Test Catcher will execute Python tests against a temporary copy of the selected tests and source files.",
-      { modal: false },
-      "Run Analysis",
-      "Cancel"
-    );
-    if (choice !== "Run Analysis") {
-      return;
-    }
-  }
+  const { executeTests } = executionMode;
 
   await vscode.window.withProgress(
     {
@@ -199,6 +220,40 @@ async function analyzeFiles(testFiles, title, options = {}) {
   );
 }
 
+async function resolveExecutionMode() {
+  const config = getConfig();
+  let executeTests = config.get("executeTests", true);
+  const confirmExecution = config.get("confirmExecution", true);
+  const requireWorkspaceTrust = config.get("requireWorkspaceTrustForExecution", true);
+
+  if (executeTests && requireWorkspaceTrust && !vscode.workspace.isTrusted) {
+    const choice = await vscode.window.showWarningMessage(
+      "Ghost Test Catcher will not execute Python tests in an untrusted workspace. Run static analysis only instead?",
+      { modal: false },
+      "Run Static Analysis",
+      "Cancel"
+    );
+    if (choice !== "Run Static Analysis") {
+      return null;
+    }
+    executeTests = false;
+  }
+
+  if (executeTests && confirmExecution) {
+    const choice = await vscode.window.showWarningMessage(
+      "Ghost Test Catcher will execute Python tests against a temporary copy of the selected tests and source files.",
+      { modal: false },
+      "Run Analysis",
+      "Cancel"
+    );
+    if (choice !== "Run Analysis") {
+      return null;
+    }
+  }
+
+  return { executeTests };
+}
+
 async function runCli(testFile, executeTests, selectedSourceFiles = [], token) {
   const workspaceFolder = getWorkspaceFolderForFile(testFile);
   if (!workspaceFolder) {
@@ -247,6 +302,353 @@ async function runCli(testFile, executeTests, selectedSourceFiles = [], token) {
     logOutput(`Invalid JSON from ${label}:\n${detail}`);
     throw new Error(`Ghost Test Catcher returned invalid JSON.\n${detail}`);
   }
+}
+
+async function discoverWorkspaceTests() {
+  if (!testController || !vscode.workspace.workspaceFolders?.length) {
+    return;
+  }
+
+  const limit = getConfig().get("testDiscoveryLimit", 500);
+  const exclude = "{**/.git/**,**/.hg/**,**/.mypy_cache/**,**/.pytest_cache/**,**/.ruff_cache/**,**/.tox/**,**/.venv/**,**/venv/**,**/__pycache__/**,**/build/**,**/dist/**,**/node_modules/**,**/docs/_build/**}";
+  const uris = await vscode.workspace.findFiles("**/*.py", exclude, limit);
+  const hitDiscoveryLimit = uris.length >= limit;
+  const discoveredFiles = new Set();
+
+  for (const uri of uris) {
+    if (!core.isTestPath(uri.fsPath)) {
+      continue;
+    }
+    discoveredFiles.add(core.normalizePath(uri.fsPath));
+    await refreshTestFile(uri);
+  }
+
+  for (const filePath of knownTestControllerFiles()) {
+    if (!fs.existsSync(filePath) || (!hitDiscoveryLimit && !discoveredFiles.has(core.normalizePath(filePath)))) {
+      removeTestFileItem(filePath);
+    }
+  }
+
+  if (hitDiscoveryLimit) {
+    logOutput(`Test discovery reached ghostTestCatcher.testDiscoveryLimit (${limit}). Increase the setting if tests are missing from the Testing panel.`);
+  }
+}
+
+async function refreshTestFile(uri) {
+  if (!testController || !uri || uri.scheme !== "file") {
+    return;
+  }
+
+  const testFile = uri.fsPath;
+  if (!core.isPythonPath(testFile) || !core.isTestPath(testFile)) {
+    removeTestFileItem(testFile);
+    return;
+  }
+
+  let text;
+  try {
+    text = await fs.promises.readFile(testFile, "utf-8");
+  } catch (error) {
+    removeTestFileItem(testFile);
+    return;
+  }
+
+  const locations = core.parseTestFunctionLocations(text);
+  if (!locations.length) {
+    removeTestFileItem(testFile);
+    return;
+  }
+
+  const fileId = testFileItemId(testFile);
+  const workspaceFolder = getWorkspaceFolderForFile(testFile);
+  const root = workspaceFolder
+    ? core.findProjectRootForFile(testFile, workspaceFolder.uri.fsPath)
+    : path.dirname(testFile);
+  const label = core.relativePathFromRoot(root, testFile) || path.basename(testFile);
+  let fileItem = testController.items.get(fileId);
+  if (!fileItem) {
+    fileItem = testController.createTestItem(fileId, label, uri);
+    testController.items.add(fileItem);
+  }
+  fileItem.label = label;
+  fileItem.canResolveChildren = false;
+  clearTestMetadataForFile(testFile);
+  testItemMetadataById.set(fileId, { type: "file", filePath: testFile });
+
+  const childItems = locations.map((location) => {
+    const qualifiedName = location.qualifiedName || location.name;
+    const item = testController.createTestItem(testCaseItemId(testFile, qualifiedName), qualifiedName, uri);
+    item.range = new vscode.Range(location.line, location.start, location.line, location.end);
+    testItemMetadataById.set(item.id, {
+      type: "test",
+      filePath: testFile,
+      name: location.name,
+      qualifiedName,
+    });
+    return item;
+  });
+  fileItem.children.replace(childItems);
+}
+
+async function runNativeTestAnalysis(request, token) {
+  const run = testController.createTestRun(request, "Ghost Test Catcher");
+  const completed = new Set();
+  try {
+    await ensureTestsResolvedForRequest(request, token);
+    const selectedItems = collectRunnableTestItems(request);
+    if (!selectedItems.length) {
+      return;
+    }
+
+    for (const item of selectedItems) {
+      run.enqueued(item);
+    }
+
+    const executionMode = await resolveExecutionMode();
+    if (!executionMode) {
+      for (const item of selectedItems) {
+        run.skipped(item);
+        completed.add(item.id);
+      }
+      return;
+    }
+
+    const reports = [];
+    const groupedItems = groupTestItemsByFile(selectedItems);
+    for (const [testFile, items] of groupedItems) {
+      throwIfCancellationRequested(token, "Ghost Test Catcher native test run was cancelled.");
+      for (const item of items) {
+        run.started(item);
+      }
+
+      try {
+        const result = await runCli(testFile, executionMode.executeTests, [], token);
+        result.__testFile = testFile;
+        reports.push(result);
+        applyDiagnostics(testFile, result);
+        reportsByFile.set(core.normalizePath(testFile), result);
+        applyNativeTestResults(run, items, result, completed);
+      } catch (error) {
+        if (isCancellationError(error)) {
+          for (const item of items) {
+            if (!completed.has(item.id)) {
+              run.skipped(item);
+              completed.add(item.id);
+            }
+          }
+          vscode.window.showInformationMessage("Ghost Test Catcher Testing run cancelled.");
+          return;
+        }
+        logOutput(`Testing panel analysis failed for ${testFile}: ${error.message}`);
+        for (const item of items) {
+          if (!completed.has(item.id)) {
+            run.errored(item, new vscode.TestMessage(error.message));
+            completed.add(item.id);
+          }
+        }
+      }
+    }
+
+    for (const item of selectedItems) {
+      if (!completed.has(item.id)) {
+        run.skipped(item);
+      }
+    }
+
+    if (reports.length) {
+      lastReports = reports;
+      codeLensChanged.fire();
+      const summary = core.summarizeReports(reports);
+      vscode.window.showInformationMessage(
+        `Ghost Test Catcher Testing: ${summary.reliable} reliable, ${summary.needsReview} needs review, ${summary.ghostRisk} ghost risk.`
+      );
+    }
+  } catch (error) {
+    if (isCancellationError(error)) {
+      vscode.window.showInformationMessage("Ghost Test Catcher Testing run cancelled.");
+      return;
+    }
+    logOutput(`Testing panel run failed: ${error.message}`);
+    vscode.window.showErrorMessage(`Ghost Test Catcher Testing failed: ${error.message}`);
+  } finally {
+    run.end();
+  }
+}
+
+async function ensureTestsResolvedForRequest(request, token) {
+  throwIfCancellationRequested(token, "Ghost Test Catcher native test run was cancelled.");
+  if (!request.include || !request.include.length) {
+    await discoverWorkspaceTests();
+    return;
+  }
+
+  const fileUris = new Map();
+  for (const item of request.include) {
+    const metadata = testItemMetadataById.get(item.id);
+    if (metadata?.type === "file" && item.uri) {
+      fileUris.set(core.normalizePath(item.uri.fsPath), item.uri);
+    }
+  }
+
+  for (const uri of fileUris.values()) {
+    throwIfCancellationRequested(token, "Ghost Test Catcher native test run was cancelled.");
+    await refreshTestFile(uri);
+  }
+}
+
+function applyNativeTestResults(run, items, result, completed) {
+  const checks = core.mapBy(result.verification?.claim_checks || [], "claim");
+  const runs = core.mapBy(result.execution?.per_test_results || [], "name");
+
+  for (const item of items) {
+    const metadata = testItemMetadataById.get(item.id);
+    if (!metadata) {
+      run.errored(item, new vscode.TestMessage("Ghost Test Catcher could not resolve metadata for this test item."));
+      completed.add(item.id);
+      continue;
+    }
+
+    const check = lookupByTestName(checks, metadata) || {};
+    const execution = lookupByTestName(runs, metadata) || {};
+    if (!check.status && !execution.status) {
+      run.errored(item, new vscode.TestMessage(`Ghost Test Catcher did not return a result for ${metadata.qualifiedName}.`));
+      completed.add(item.id);
+      continue;
+    }
+
+    const groundedStatus = check.status || "unsupported";
+    const executionStatus = execution.status || "unknown";
+    const outcome = core.nativeTestOutcome(groundedStatus, executionStatus);
+    const message = new vscode.TestMessage(core.nativeTestMessage({
+      name: metadata.qualifiedName,
+      groundedStatus,
+      executionStatus,
+      confidence: check.confidence,
+      missingSymbols: check.missing_symbols || [],
+      riskCategories: check.risk_categories || [],
+      recommendation: check.recommendation || "",
+    }));
+
+    if (outcome === "passed") {
+      run.passed(item);
+    } else if (outcome === "failed") {
+      run.failed(item, message);
+    } else {
+      run.skipped(item);
+    }
+    completed.add(item.id);
+  }
+}
+
+function collectRunnableTestItems(request) {
+  const excluded = new Set();
+  for (const item of request.exclude || []) {
+    collectTestItemIds(item, excluded);
+  }
+
+  const roots = request.include && request.include.length
+    ? request.include
+    : testItemCollectionToArray(testController.items);
+  const selected = new Map();
+  for (const item of roots) {
+    collectLeafTestItems(item, excluded, selected);
+  }
+  return Array.from(selected.values());
+}
+
+function collectLeafTestItems(item, excluded, selected) {
+  if (excluded.has(item.id)) {
+    return;
+  }
+  const metadata = testItemMetadataById.get(item.id);
+  if (metadata?.type === "test") {
+    selected.set(item.id, item);
+    return;
+  }
+  item.children.forEach((child) => collectLeafTestItems(child, excluded, selected));
+}
+
+function collectTestItemIds(item, ids) {
+  ids.add(item.id);
+  item.children.forEach((child) => collectTestItemIds(child, ids));
+}
+
+function groupTestItemsByFile(items) {
+  const grouped = new Map();
+  for (const item of items) {
+    const metadata = testItemMetadataById.get(item.id);
+    if (!metadata?.filePath) {
+      continue;
+    }
+    if (!grouped.has(metadata.filePath)) {
+      grouped.set(metadata.filePath, []);
+    }
+    grouped.get(metadata.filePath).push(item);
+  }
+  return grouped;
+}
+
+function lookupByTestName(items, metadata) {
+  return items.get(metadata.qualifiedName) || items.get(metadata.name);
+}
+
+function testItemCollectionToArray(collection) {
+  const items = [];
+  collection.forEach((item) => items.push(item));
+  return items;
+}
+
+function knownTestControllerFiles() {
+  const files = new Set();
+  for (const metadata of testItemMetadataById.values()) {
+    if (metadata.type === "file") {
+      files.add(metadata.filePath);
+    }
+  }
+  return files;
+}
+
+function scheduleTestFileRefresh(uri) {
+  if (!uri || uri.scheme !== "file" || !core.isPythonPath(uri.fsPath)) {
+    return;
+  }
+  const key = core.normalizePath(uri.fsPath);
+  const existing = pendingTestRefreshes.get(key);
+  if (existing) {
+    clearTimeout(existing);
+  }
+  const timer = setTimeout(() => {
+    pendingTestRefreshes.delete(key);
+    refreshTestFile(uri).catch((error) => logOutput(`Failed to refresh Testing panel item for ${uri.fsPath}: ${error.message}`));
+  }, TEST_REFRESH_DELAY_MS);
+  pendingTestRefreshes.set(key, timer);
+}
+
+function removeTestFileItem(testFile) {
+  if (!testController) {
+    return;
+  }
+  const fileId = testFileItemId(testFile);
+  testController.items.delete(fileId);
+  clearTestMetadataForFile(testFile);
+}
+
+function clearTestMetadataForFile(testFile) {
+  const fileId = testFileItemId(testFile);
+  const childPrefix = `${fileId}:`;
+  for (const id of Array.from(testItemMetadataById.keys())) {
+    if (id === fileId || id.startsWith(childPrefix)) {
+      testItemMetadataById.delete(id);
+    }
+  }
+}
+
+function testFileItemId(testFile) {
+  return `ghost-file:${core.normalizePath(testFile)}`;
+}
+
+function testCaseItemId(testFile, qualifiedName) {
+  return `${testFileItemId(testFile)}:${qualifiedName}`;
 }
 
 async function runDoctor(uri) {
@@ -696,6 +1098,14 @@ function terminateProcess(child) {
 
 function isCancellationError(error) {
   return Boolean(error?.cancelled) || /cancelled/i.test(error?.message || "");
+}
+
+function throwIfCancellationRequested(token, message) {
+  if (token?.isCancellationRequested) {
+    const error = new Error(message);
+    error.cancelled = true;
+    throw error;
+  }
 }
 
 function quoteForLog(value) {

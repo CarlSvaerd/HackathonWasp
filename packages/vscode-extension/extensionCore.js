@@ -260,6 +260,37 @@ function summarizeReports(reports) {
   );
 }
 
+function nativeTestOutcome(groundedStatus, executionStatus) {
+  if (groundedStatus === "unsupported" || groundedStatus === "borderline") {
+    return "failed";
+  }
+  if (executionStatus === "failed" || executionStatus === "error") {
+    return "failed";
+  }
+  if (executionStatus === "passed") {
+    return "passed";
+  }
+  return "skipped";
+}
+
+function nativeTestMessage({ name, groundedStatus, executionStatus, confidence, missingSymbols, riskCategories, recommendation }) {
+  const details = [
+    `Grounding: ${supportLabel(groundedStatus || "unsupported")}`,
+    `Confidence: ${percent(Number(confidence || 0))}`,
+    `Execution: ${executionStatus || "unknown"}`,
+  ];
+  if (missingSymbols && missingSymbols.length) {
+    details.push(`Missing symbols: ${missingSymbols.join(", ")}`);
+  }
+  if (riskCategories && riskCategories.length) {
+    details.push(`Risk categories: ${riskCategories.join(", ")}`);
+  }
+  if (recommendation) {
+    details.push(`Recommendation: ${recommendation}`);
+  }
+  return `Ghost Test Catcher result for ${name}.\n${details.join("\n")}`;
+}
+
 function mapBy(items, key) {
   const mapped = new Map();
   for (const item of items || []) {
@@ -486,6 +517,8 @@ module.exports = {
   isPythonPath,
   mapBy,
   mergeSourcePaths,
+  nativeTestMessage,
+  nativeTestOutcome,
   normalizePath,
   parseTestFunctionLocations,
   percent,

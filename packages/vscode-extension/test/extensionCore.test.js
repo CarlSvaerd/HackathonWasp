@@ -163,12 +163,48 @@ test("summarizeReports groups report verdicts for notifications", () => {
   });
 });
 
+test("nativeTestOutcome maps Ghost Test Catcher statuses to VS Code Testing states", () => {
+  assert.equal(core.nativeTestOutcome("supported", "passed"), "passed");
+  assert.equal(core.nativeTestOutcome("supported", "skipped"), "skipped");
+  assert.equal(core.nativeTestOutcome("supported", "unknown"), "skipped");
+  assert.equal(core.nativeTestOutcome("supported", "failed"), "failed");
+  assert.equal(core.nativeTestOutcome("supported", "error"), "failed");
+  assert.equal(core.nativeTestOutcome("borderline", "passed"), "failed");
+  assert.equal(core.nativeTestOutcome("unsupported", "passed"), "failed");
+});
+
+test("nativeTestMessage includes actionable per-test review details", () => {
+  const message = core.nativeTestMessage({
+    name: "TestCheckout.test_total",
+    groundedStatus: "unsupported",
+    executionStatus: "failed",
+    confidence: 0.125,
+    missingSymbols: ["calculate_total"],
+    riskCategories: ["missing_symbols"],
+    recommendation: "Point the test at APIs that exist in the selected source context.",
+  });
+
+  assert.ok(message.includes("TestCheckout.test_total"));
+  assert.ok(message.includes("Grounding: Ghost risk"));
+  assert.ok(message.includes("Confidence: 12.5%"));
+  assert.ok(message.includes("Execution: failed"));
+  assert.ok(message.includes("Missing symbols: calculate_total"));
+  assert.ok(message.includes("Risk categories: missing_symbols"));
+  assert.ok(message.includes("Recommendation: Point the test at APIs"));
+});
+
 test("package manifest declares limited workspace trust and guarded execution", () => {
   assert.equal(manifest.capabilities.untrustedWorkspaces.supported, "limited");
   assert.ok(manifest.capabilities.untrustedWorkspaces.restrictedConfigurations.includes("ghostTestCatcher.executeTests"));
   assert.equal(
     manifest.contributes.configuration.properties["ghostTestCatcher.requireWorkspaceTrustForExecution"].default,
     true
+  );
+  assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.refreshTestExplorer"));
+  assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.refreshTestExplorer"));
+  assert.equal(
+    manifest.contributes.configuration.properties["ghostTestCatcher.testDiscoveryLimit"].default,
+    500
   );
 });
 
