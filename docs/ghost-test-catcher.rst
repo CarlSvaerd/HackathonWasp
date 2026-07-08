@@ -1,9 +1,10 @@
 Ghost Test Catcher
 ==================
 
-Ghost Test Catcher is a trust checker for AI-generated pytest tests. It checks
-whether tests are grounded in source files, whether they execute under pytest,
-and which files provide the strongest evidence for the result.
+Ghost Test Catcher is a trust checker for AI-generated Python tests. It checks
+whether tests are grounded in source files, whether they execute in an isolated
+Python test workspace, and which files provide the strongest evidence for the
+result.
 
 Product Surfaces
 ----------------
@@ -17,7 +18,7 @@ The same Python engine powers three surfaces:
 CLI
 ---
 
-Analyze an existing pytest file:
+Analyze an existing Python test file:
 
 .. code-block:: bash
 
@@ -78,9 +79,11 @@ The extension provides:
 
 * ``Ghost Test Catcher: Analyze Current Test File``
 * ``Ghost Test Catcher: Analyze Changed Test Files``
-* inline diagnostics on pytest functions
+* ``Ghost Test Catcher: Analyze Selected Files or Folders``
+* inline diagnostics on pytest-style functions and ``unittest.TestCase`` methods
 * CodeLens verdicts
-* a report panel with reliability, ETV, execution status, evidence, and missing symbols
+* a report panel with reliability, ETV, framework, execution status, risk categories, recommendations, evidence, and missing symbols
+* nested Python project root detection when VS Code is opened at a parent folder
 
 Package the local extension:
 
@@ -128,6 +131,8 @@ Safety
 ------
 
 When execution is enabled, Ghost Test Catcher copies selected tests and source
-files into a temporary directory and runs pytest there with plugin autoloading
-disabled. This avoids modifying the workspace during analysis, but it still
-executes Python code. Keep confirmation enabled for untrusted generated tests.
+files into a temporary directory and runs the pytest runner there with plugin
+autoloading disabled. Pytest is used as the execution engine because it can
+collect both pytest-style functions and ``unittest.TestCase`` methods. This
+avoids modifying the workspace during analysis, but it still executes Python
+code. Keep confirmation enabled for untrusted generated tests.

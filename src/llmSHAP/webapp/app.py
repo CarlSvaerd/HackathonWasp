@@ -63,15 +63,15 @@ DEMO_PRESETS = {
         test_mode="e2e",
         directory=REPO_ROOT / "demo" / "ghost_risk_sample",
         prompt_override=(
-            "Generate runnable pytest end-to-end tests for a full incident management workflow built around these files. "
+            "Generate runnable Python end-to-end tests for a full incident management workflow built around these files. "
             "Cover alert ingestion, dashboard visibility, on-call paging, operator acknowledgement, notification delivery, "
             "and resolution history in realistic multi-step user-facing flows. "
-            "Return only Python code in a single ```python``` block with pytest-style test functions."
+            "Return only Python code in a single ```python``` block."
         ),
         instructions_override=(
             "You are in stress-test mode for Ghost Test Catcher. "
             "Generate ambitious product-level tests inferred from the uploaded files and surrounding intent, even when some workflows must be guessed. "
-            "Return only pytest code."
+            "Return only Python test code."
         ),
     ),
 }

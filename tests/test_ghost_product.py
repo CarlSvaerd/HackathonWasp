@@ -33,6 +33,41 @@ def test_analyze_existing_tests_scores_grounded_pytest_file() -> None:
     assert result["files"][0]["path"] == "calculator.py"
 
 
+def test_analyze_existing_tests_scores_grounded_unittest_testcase() -> None:
+    source = UploadedContextFile(
+        path="calculator.py",
+        content="def add(a, b):\n    return a + b\n",
+        size_bytes=32,
+        line_count=2,
+        is_test_file=False,
+    )
+    test = UploadedContextFile(
+        path="tests/test_calculator_unittest.py",
+        content=(
+            "import unittest\n"
+            "from calculator import add\n\n\n"
+            "class CalculatorTests(unittest.TestCase):\n"
+            "    def test_add_returns_sum(self):\n"
+            "        self.assertEqual(add(2, 3), 5)\n"
+        ),
+        size_bytes=150,
+        line_count=7,
+        is_test_file=True,
+    )
+
+    result = analyze_existing_tests(test_files=[test], context_files=[source])
+    claim = result["verification"]["claim_checks"][0]
+
+    assert result["analysis_mode"] == "analyze_existing_tests"
+    assert result["generated_tests"]["test_names"] == ["CalculatorTests.test_add_returns_sum"]
+    assert result["generated_tests"]["frameworks"] == ["unittest"]
+    assert result["execution"]["status"] == "passed"
+    assert result["execution"]["per_test_results"][0]["status"] == "passed"
+    assert claim["framework"] == "unittest"
+    assert claim["assertion_count"] == 1
+    assert claim["missing_symbols"] == []
+
+
 def test_cli_analyze_outputs_json_for_existing_tests(tmp_path, capsys) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()

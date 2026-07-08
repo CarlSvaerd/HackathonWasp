@@ -16,25 +16,25 @@ from llmSHAP.ghost.workspace import collect_files, discover_source_specs, discov
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ghost-test-catcher",
-        description="Check whether pytest tests are grounded in the source files they claim to exercise.",
+        description="Check whether Python tests are grounded in the source files they claim to exercise.",
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
 
-    analyze = subcommands.add_parser("analyze", help="Analyze existing pytest files against source/context files.")
+    analyze = subcommands.add_parser("analyze", help="Analyze existing Python test files against source/context files.")
     _add_common_project_args(analyze)
     analyze.add_argument("--tests", nargs="+", help="Test file or directory paths to analyze.")
     analyze.add_argument("--source", nargs="*", help="Source/context file or directory paths.")
-    analyze.add_argument("--no-execution", action="store_true", help="Skip pytest execution and run static checks only.")
+    analyze.add_argument("--no-execution", action="store_true", help="Skip Python test execution and run static checks only.")
     analyze.add_argument("--strict-exit", action="store_true", help="Exit 2 for non-reliable results.")
     analyze.set_defaults(handler=_handle_analyze)
 
-    ci = subcommands.add_parser("ci", help="Run a CI/PR gate for existing pytest files.")
+    ci = subcommands.add_parser("ci", help="Run a CI/PR gate for existing Python test files.")
     _add_common_project_args(ci)
     ci.add_argument("--tests", nargs="+", help="Test file or directory paths to analyze.")
     ci.add_argument("--source", nargs="*", help="Source/context file or directory paths.")
-    ci.add_argument("--changed-from", help="Git ref used to select changed pytest files, for example origin/main.")
+    ci.add_argument("--changed-from", help="Git ref used to select changed Python test files, for example origin/main.")
     ci.add_argument("--summary", help="Write a Markdown CI summary to this path.")
-    ci.add_argument("--no-execution", action="store_true", help="Skip pytest execution and run static checks only.")
+    ci.add_argument("--no-execution", action="store_true", help="Skip Python test execution and run static checks only.")
     ci.add_argument(
         "--fail-on",
         choices=["ghost_risk", "needs_review", "never"],
@@ -48,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     generate = subcommands.add_parser(
         "generate-and-check",
-        help="Generate pytest tests with OpenAI, then run the same trust checks.",
+        help="Generate Python tests with OpenAI, then run the same trust checks.",
     )
     _add_common_project_args(generate)
     generate.add_argument("--source", nargs="*", help="Source/context file or directory paths.")
@@ -66,7 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
     calibrate = subcommands.add_parser("calibrate", help="Run built-in calibration cases.")
     calibrate.add_argument("--format", choices=["pretty", "json"], default="pretty", help="Output format.")
     calibrate.add_argument("--output", help="Write JSON payload to this path.")
-    calibrate.add_argument("--no-execution", action="store_true", help="Skip pytest execution and run static checks only.")
+    calibrate.add_argument("--no-execution", action="store_true", help="Skip Python test execution and run static checks only.")
     calibrate.set_defaults(handler=_handle_calibrate)
 
     return parser
@@ -298,12 +298,18 @@ def _emit_pretty(result: dict[str, Any]) -> None:
         check = checks.get(name, {})
         run = runs.get(name, {})
         missing = check.get("missing_symbols") or []
+        categories = check.get("risk_categories") or []
         suffix = f" missing={', '.join(missing)}" if missing else ""
+        category_suffix = f" categories={', '.join(categories)}" if categories else ""
         print(
             f"- {name}: grounding={check.get('status', 'unknown')} "
             f"confidence={_pct(float(check.get('confidence', 0.0)))} "
-            f"pytest={run.get('status', 'unknown')}{suffix}"
+            f"framework={check.get('framework', 'unknown')} "
+            f"run={run.get('status', 'unknown')}{suffix}{category_suffix}"
         )
+        recommendation = check.get("recommendation")
+        if recommendation:
+            print(f"  recommendation={recommendation}")
     print()
     print("Top evidence/source files:")
     for item in result.get("files", [])[:5]:
@@ -327,7 +333,7 @@ def _ci_passed(result: dict[str, Any], *, fail_on: str) -> bool:
 
 def _ci_status_message(result: dict[str, Any], *, fail_on: str) -> str:
     if not result.get("generated_tests", {}).get("test_count"):
-        return "No pytest files were selected for Ghost Test Catcher analysis."
+        return "No Python test files were selected for Ghost Test Catcher analysis."
     verdict = result.get("trust_assessment", {}).get("verdict", "unknown")
     if _ci_passed(result, fail_on=fail_on):
         return f"Ghost Test Catcher passed with verdict '{verdict}' under fail-on policy '{fail_on}'."
@@ -338,7 +344,7 @@ def _empty_ci_result(*, repo_root: Path, source_specs: list[str], test_specs: li
     return {
         "analysis_mode": "ci",
         "test_mode": "mixed",
-        "prompt": "No pytest files were selected for analysis.",
+        "prompt": "No Python test files were selected for analysis.",
         "api_map": "",
         "answer": "",
         "sampler": "none",
@@ -360,10 +366,11 @@ def _empty_ci_result(*, repo_root: Path, source_specs: list[str], test_specs: li
             "syntax_error": None,
             "test_names": [],
             "test_count": 0,
+            "frameworks": ["unknown"],
         },
         "verification": {
             "verdict": "grounded",
-            "message": "No changed pytest files were selected.",
+            "message": "No changed Python test files were selected.",
             "groundedness_score": 1.0,
             "context_relevance_score": 1.0,
             "supported_claim_ratio": 1.0,
@@ -377,14 +384,14 @@ def _empty_ci_result(*, repo_root: Path, source_specs: list[str], test_specs: li
         },
         "preflight": {
             "status": "clear",
-            "message": "No pytest files were selected.",
+            "message": "No Python test files were selected.",
             "missing_imports": [],
             "missing_symbols": [],
             "total_generated_tests": 0,
         },
         "execution": {
             "status": "skipped",
-            "message": "No pytest files were selected.",
+            "message": "No Python test files were selected.",
             "primary_failure": "",
             "pytest_summary": "",
             "per_test_results": [],
@@ -396,7 +403,7 @@ def _empty_ci_result(*, repo_root: Path, source_specs: list[str], test_specs: li
         },
         "trust_assessment": {
             "verdict": "reliable",
-            "message": "No changed pytest files were selected.",
+            "message": "No changed Python test files were selected.",
             "reliability_score": 1.0,
             "thresholds": {
                 "reliable_min": 0.62,
@@ -478,15 +485,15 @@ def _render_markdown_summary(result: dict[str, Any]) -> str:
         for item in input_files:
             lines.append(f"- `{item['path']}` ({item['line_count']} lines)")
     else:
-        lines.append("- No pytest files were selected.")
+        lines.append("- No Python test files were selected.")
 
     lines.extend(
         [
             "",
             "## Per-Test Results",
             "",
-            "| Test | Grounding | Confidence | Pytest | Missing symbols |",
-            "| --- | --- | ---: | --- | --- |",
+            "| Test | Framework | Grounding | Confidence | Run | Categories | Missing symbols | Recommendation |",
+            "| --- | --- | --- | ---: | --- | --- | --- | --- |",
         ]
     )
     checks = {item.get("claim"): item for item in result["verification"].get("claim_checks", [])}
@@ -497,16 +504,21 @@ def _render_markdown_summary(result: dict[str, Any]) -> str:
             check = checks.get(name, {})
             run = runs.get(name, {})
             missing = ", ".join(f"`{symbol}`" for symbol in check.get("missing_symbols", [])) or "-"
+            categories = ", ".join(f"`{category}`" for category in check.get("risk_categories", [])) or "-"
+            recommendation = str(check.get("recommendation") or "-").replace("|", "\\|")
             lines.append(
                 "| "
                 f"`{name}` | "
+                f"`{check.get('framework', 'unknown')}` | "
                 f"`{check.get('status', 'unknown')}` | "
                 f"{_pct(float(check.get('confidence', 0.0)))} | "
                 f"`{run.get('status', 'unknown')}` | "
-                f"{missing} |"
+                f"{categories} | "
+                f"{missing} | "
+                f"{recommendation} |"
             )
     else:
-        lines.append("| - | - | - | - | - |")
+        lines.append("| - | - | - | - | - | - | - | - |")
 
     lines.extend(
         [

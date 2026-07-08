@@ -68,6 +68,10 @@ def test_login_triggers_stripe_invoice_and_cluster_bootstrap():
 
     assert result["verdict"] == "ghost_risk"
     assert result["unsupported_claims"] >= 1
+    claim = result["claim_checks"][0]
+    assert "missing_symbols" in claim["risk_categories"]
+    assert "send_stripe_invoice" in claim["recommendation"]
+    assert claim["framework"] == "pytest"
 
 
 def test_verify_answer_grounding_indexes_private_helpers_used_by_tests() -> None:

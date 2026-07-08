@@ -40,12 +40,17 @@ def _verify_parsed_grounding(answer: str, parsed_tests: dict, files: list[Upload
             "total_claims": 1,
             "claim_checks": [
                 {
-                    "claim": "No runnable pytest tests could be verified from the generated output.",
+                    "claim": "No runnable Python tests could be verified from the test source.",
                     "status": "unsupported",
                     "confidence": 0.0,
                     "evidence": None,
                     "mentioned_symbols": [],
                     "missing_symbols": [],
+                    "framework": "unknown",
+                    "assertion_count": 0,
+                    "assertion_styles": [],
+                    "risk_categories": ["invalid_test_code"],
+                    "recommendation": "Fix the Python syntax so Ghost Test Catcher can parse, ground, and execute the tests.",
                 }
             ],
             "top_evidence_files": [],
@@ -55,7 +60,7 @@ def _verify_parsed_grounding(answer: str, parsed_tests: dict, files: list[Upload
     if not test_cases:
         return {
             "verdict": "ghost_risk",
-            "message": "No pytest-style tests were found in the generated output.",
+            "message": "No Python test functions or unittest methods were found in the test source.",
             "groundedness_score": 0.0,
             "context_relevance_score": 0.0,
             "supported_claim_ratio": 0.0,
@@ -66,12 +71,17 @@ def _verify_parsed_grounding(answer: str, parsed_tests: dict, files: list[Upload
             "total_claims": 1,
             "claim_checks": [
                 {
-                    "claim": "The generated output did not contain pytest test functions.",
+                    "claim": "The test source did not contain collectable Python tests.",
                     "status": "unsupported",
                     "confidence": 0.0,
                     "evidence": None,
                     "mentioned_symbols": [],
                     "missing_symbols": [],
+                    "framework": "unknown",
+                    "assertion_count": 0,
+                    "assertion_styles": [],
+                    "risk_categories": ["no_tests_detected"],
+                    "recommendation": "Add top-level def test_* functions or unittest.TestCase methods named test_* so the runner can collect them.",
                 }
             ],
             "top_evidence_files": [],
@@ -106,6 +116,14 @@ def _verify_parsed_grounding(answer: str, parsed_tests: dict, files: list[Upload
             + 0.15 * tfidf_score
         )
         label = _support_label(confidence)
+        risk_categories = _risk_categories(
+            test_case=test_case,
+            missing_symbols=missing_symbols,
+            tfidf_score=tfidf_score,
+            symbol_coverage=symbol_coverage,
+            imported_local_modules=imported_local_modules,
+            label=label,
+        )
         claim_checks.append(
             {
                 "claim": test_case.name,
@@ -122,6 +140,11 @@ def _verify_parsed_grounding(answer: str, parsed_tests: dict, files: list[Upload
                 "mentioned_symbols": test_case.referenced_symbols,
                 "missing_symbols": missing_symbols,
                 "evidence_symbols": evidence_symbols,
+                "framework": test_case.framework,
+                "assertion_count": test_case.assertion_count,
+                "assertion_styles": test_case.assertion_styles or [],
+                "risk_categories": risk_categories,
+                "recommendation": _recommendation(risk_categories, missing_symbols),
             }
         )
         if best_match is not None:
@@ -347,6 +370,60 @@ def _support_label(score: float) -> str:
     if score >= BORDERLINE_THRESHOLD:
         return "borderline"
     return "unsupported"
+
+
+def _risk_categories(
+    *,
+    test_case: GeneratedTestCase,
+    missing_symbols: list[str],
+    tfidf_score: float,
+    symbol_coverage: float,
+    imported_local_modules: list[str],
+    label: str,
+) -> list[str]:
+    categories: list[str] = []
+    if missing_symbols:
+        categories.append("missing_symbols")
+    if test_case.assertion_count <= 0:
+        categories.append("weak_assertion")
+    if test_case.referenced_symbols and symbol_coverage < 0.5:
+        categories.append("low_symbol_coverage")
+    if tfidf_score < 0.15:
+        categories.append("weak_context_match")
+    if test_case.imported_modules and not imported_local_modules:
+        categories.append("no_local_import")
+    source = test_case.source.lower()
+    if (
+        any(marker in source for marker in ["mock(", "magicmock", "patch(", "monkeypatch"])
+        and symbol_coverage < 0.75
+    ):
+        categories.append("heavy_mocking")
+    if not categories and label == "supported":
+        categories.append("grounded")
+    return categories or ["needs_review"]
+
+
+def _recommendation(risk_categories: list[str], missing_symbols: list[str]) -> str:
+    if "missing_symbols" in risk_categories:
+        missing = ", ".join(missing_symbols[:4])
+        suffix = f" Missing symbols: {missing}." if missing else ""
+        return (
+            "Point the test at APIs that exist in the selected source context, or include the implementation files "
+            f"that define the missing APIs.{suffix}"
+        )
+    if "no_local_import" in risk_categories:
+        return "Verify that the test imports project modules from the selected source paths, not only external or invented modules."
+    if "weak_assertion" in risk_categories:
+        return "Add a concrete assertion or expected exception check so the test proves behavior instead of only executing code."
+    if "heavy_mocking" in risk_categories:
+        return "Reduce mocks or connect the test to a real project symbol so the behavior remains grounded in implementation code."
+    if "low_symbol_coverage" in risk_categories:
+        return "Rewrite the test to call source symbols that Ghost Test Catcher can locate, or expand the source context."
+    if "weak_context_match" in risk_categories:
+        return "Review the nearest evidence snippet and tighten the test name, imports, or assertions to match the implementation."
+    if "grounded" in risk_categories:
+        return "Keep this test candidate; it imports real project code, asserts behavior, and has supporting source evidence."
+    return "Manually review this test before trusting it; the available evidence is not strong enough for an automatic keep decision."
 
 
 def _overall_context_similarity(

@@ -9,7 +9,7 @@ include = ["llmSHAP*"]
 [project]
 name = "llmSHAP"
 version = "1.5.2"
-description = "LLM attribution plus Ghost Test Catcher, a trust checker for AI-generated pytest tests."
+description = "LLM attribution plus Ghost Test Catcher, a trust checker for AI-generated Python tests."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [

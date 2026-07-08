@@ -18,6 +18,7 @@ function activate(context) {
   context.subscriptions.push(codeLensChanged);
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.analyzeCurrentTest", analyzeCurrentTest));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.analyzeChangedTests", analyzeChangedTests));
+  context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.analyzeSelectedFiles", analyzeSelectedFiles));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.openLastReport", openLastReport));
   context.subscriptions.push(vscode.languages.registerCodeLensProvider({ language: "python" }, new GhostCodeLensProvider()));
 }
@@ -31,7 +32,7 @@ function deactivate() {
 async function analyzeCurrentTest() {
   const editor = vscode.window.activeTextEditor;
   if (!editor || editor.document.languageId !== "python") {
-    vscode.window.showWarningMessage("Open a Python pytest file before running Ghost Test Catcher.");
+    vscode.window.showWarningMessage("Open a Python test file before running Ghost Test Catcher.");
     return;
   }
 
@@ -43,7 +44,7 @@ async function analyzeCurrentTest() {
   const testFile = document.uri.fsPath;
   if (!core.isTestPath(testFile)) {
     const choice = await vscode.window.showWarningMessage(
-      "This file does not look like a pytest test file. Analyze it anyway?",
+      "This file does not look like a Python test file. Analyze it anyway?",
       "Analyze",
       "Cancel"
     );
@@ -62,25 +63,59 @@ async function analyzeChangedTests() {
     return;
   }
 
-  const changedFiles = await gitChangedFiles(folder.uri.fsPath);
+  const workspaceRoot = folder.uri.fsPath;
+  const activeFile = vscode.window.activeTextEditor?.document.uri.scheme === "file"
+    ? vscode.window.activeTextEditor.document.uri.fsPath
+    : "";
+  const root = activeFile ? core.findProjectRootForFile(activeFile, workspaceRoot) : workspaceRoot;
+  const changedFiles = await gitChangedFiles(root);
   const testFiles = changedFiles
-    .map((item) => path.join(folder.uri.fsPath, item))
+    .map((item) => path.join(root, item))
     .filter((item) => fs.existsSync(item) && core.isTestPath(item));
 
   if (!testFiles.length) {
-    vscode.window.showInformationMessage("No changed pytest files were found.");
+    vscode.window.showInformationMessage("No changed Python test files were found.");
     return;
   }
 
   await analyzeFiles(testFiles, `Analyzing ${testFiles.length} changed test file${testFiles.length === 1 ? "" : "s"}`);
 }
 
-async function analyzeFiles(testFiles, title) {
+async function analyzeSelectedFiles(uri, selectedUris) {
+  const selected = Array.isArray(selectedUris) && selectedUris.length ? selectedUris : uri ? [uri] : [];
+  if (!selected.length && vscode.window.activeTextEditor?.document.languageId === "python") {
+    selected.push(vscode.window.activeTextEditor.document.uri);
+  }
+  const fileUris = selected.filter((item) => item && item.scheme === "file");
+  if (!fileUris.length) {
+    vscode.window.showWarningMessage("Select one or more Python files or folders before running Ghost Test Catcher.");
+    return;
+  }
+
+  await vscode.workspace.saveAll(false);
+  const expandedFiles = await expandSelectedPaths(fileUris.map((item) => item.fsPath));
+  const pythonFiles = expandedFiles.filter(core.isPythonPath);
+  const testFiles = pythonFiles.filter(core.isTestPath);
+  const sourceFiles = pythonFiles.filter((item) => !core.isTestPath(item));
+
+  if (!testFiles.length) {
+    vscode.window.showWarningMessage("Select at least one Python test file along with any source files or folders you want as context.");
+    return;
+  }
+
+  await analyzeFiles(
+    testFiles,
+    `Analyzing ${testFiles.length} selected test file${testFiles.length === 1 ? "" : "s"}`,
+    { sourceFiles }
+  );
+}
+
+async function analyzeFiles(testFiles, title, options = {}) {
   const executeTests = getConfig().get("executeTests", true);
   const confirmExecution = getConfig().get("confirmExecution", true);
   if (executeTests && confirmExecution) {
     const choice = await vscode.window.showWarningMessage(
-      "Ghost Test Catcher will execute pytest against a temporary copy of the selected tests and source files.",
+      "Ghost Test Catcher will execute Python tests against a temporary copy of the selected tests and source files.",
       { modal: false },
       "Run Analysis",
       "Cancel"
@@ -105,7 +140,7 @@ async function analyzeFiles(testFiles, title) {
             message: path.basename(testFile),
             increment: testFiles.length ? 100 / testFiles.length : 100,
           });
-          const result = await runCli(testFile, executeTests);
+          const result = await runCli(testFile, executeTests, options.sourceFiles || []);
           result.__testFile = testFile;
           reports.push(result);
           applyDiagnostics(testFile, result);
@@ -126,15 +161,16 @@ async function analyzeFiles(testFiles, title) {
   );
 }
 
-async function runCli(testFile, executeTests) {
+async function runCli(testFile, executeTests, selectedSourceFiles = []) {
   const workspaceFolder = getWorkspaceFolderForFile(testFile);
   if (!workspaceFolder) {
     throw new Error("The selected test file is not inside an open workspace.");
   }
 
-  const root = workspaceFolder.uri.fsPath;
+  const root = core.findProjectRootForFile(testFile, workspaceFolder.uri.fsPath);
   const config = getConfig();
-  const sourcePaths = config.get("sourcePaths", ["src"]);
+  const selectedSourcePaths = core.toRelativeSourcePaths(root, selectedSourceFiles);
+  const sourcePaths = selectedSourcePaths.length ? selectedSourcePaths : config.get("sourcePaths", ["src"]);
   const args = core.buildAnalyzeArgs({
     root,
     testFile,
@@ -179,12 +215,14 @@ function applyDiagnostics(testFile, result) {
     const groundedStatus = check.status || "unsupported";
     const executionStatus = run.status || "unknown";
     const missing = check.missing_symbols || [];
+    const categories = check.risk_categories || [];
     const confidence = core.percent(Number(check.confidence || 0));
     const severity = diagnosticSeverity(groundedStatus, executionStatus);
     const missingText = missing.length ? ` Missing symbols: ${missing.join(", ")}.` : "";
+    const categoryText = categories.length ? ` Categories: ${categories.join(", ")}.` : "";
     const diagnostic = new vscode.Diagnostic(
       range,
-      `Ghost Test Catcher: ${core.supportLabel(groundedStatus)} (${confidence} grounded), pytest ${executionStatus}.${missingText}`,
+      `Ghost Test Catcher: ${core.supportLabel(groundedStatus)} (${confidence} grounded), test run ${executionStatus}.${missingText}${categoryText}`,
       severity
     );
     diagnostic.source = "Ghost Test Catcher";
@@ -235,7 +273,7 @@ class GhostCodeLensProvider {
       const check = checks.get(name) || {};
       const run = runs.get(name) || {};
       const range = locations.get(name) || new vscode.Range(0, 0, 0, 1);
-      const title = `Ghost Test: ${core.supportLabel(check.status || "unsupported")} | pytest ${run.status || "unknown"} | ${core.percent(Number(check.confidence || 0))}`;
+      const title = `Ghost Test: ${core.supportLabel(check.status || "unsupported")} | run ${run.status || "unknown"} | ${core.percent(Number(check.confidence || 0))}`;
       return new vscode.CodeLens(range, {
         title,
         command: "ghostTestCatcher.openLastReport",
@@ -248,7 +286,11 @@ class GhostCodeLensProvider {
 function findTestFunctions(text) {
   const locations = new Map();
   for (const item of core.parseTestFunctionLocations(text)) {
-    locations.set(item.name, new vscode.Range(item.line, item.start, item.line, item.end));
+    const range = new vscode.Range(item.line, item.start, item.line, item.end);
+    locations.set(item.name, range);
+    if (item.qualifiedName) {
+      locations.set(item.qualifiedName, range);
+    }
   }
   return locations;
 }
@@ -267,6 +309,64 @@ function gitChangedFiles(root) {
   return execFile("git", ["diff", "--name-only", "HEAD"], { cwd: root })
     .then(({ stdout }) => stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean))
     .catch(() => []);
+}
+
+async function expandSelectedPaths(selectedPaths) {
+  const files = [];
+  const seen = new Set();
+  for (const selectedPath of selectedPaths) {
+    await collectPythonFiles(selectedPath, files, seen);
+  }
+  return files;
+}
+
+async function collectPythonFiles(selectedPath, files, seen) {
+  let stats;
+  try {
+    stats = await fs.promises.stat(selectedPath);
+  } catch {
+    return;
+  }
+  const normalized = core.normalizePath(selectedPath);
+  if (seen.has(normalized)) {
+    return;
+  }
+  seen.add(normalized);
+
+  if (stats.isDirectory()) {
+    if (shouldSkipDirectory(selectedPath)) {
+      return;
+    }
+    const entries = await fs.promises.readdir(selectedPath, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      await collectPythonFiles(path.join(selectedPath, entry.name), files, seen);
+    }
+    return;
+  }
+
+  if (stats.isFile() && core.isPythonPath(selectedPath)) {
+    files.push(selectedPath);
+  }
+}
+
+function shouldSkipDirectory(directory) {
+  const normalized = core.toPosixPath(directory).toLowerCase();
+  const name = path.basename(normalized);
+  return [
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".tox",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+  ].includes(name) || normalized.endsWith("/docs/_build");
 }
 
 function execFile(command, args, options) {

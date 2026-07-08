@@ -16,7 +16,8 @@ if TYPE_CHECKING:
 
 SUMMARY_PATTERN = re.compile(r"(\d+)\s+(passed|failed|errors?)")
 PER_TEST_STATUS_PATTERN = re.compile(
-    r"test_generated_output\.py::(?P<name>test_[A-Za-z0-9_]+)\s+(?P<status>PASSED|FAILED|ERROR)",
+    r"test_generated_output\.py::(?:(?P<class_name>[A-Za-z_][A-Za-z0-9_]*)::)?"
+    r"(?P<name>test_[A-Za-z0-9_]+)\s+(?P<status>PASSED|FAILED|ERROR)",
     re.MULTILINE,
 )
 PRIMARY_FAILURE_PATTERNS = [
@@ -55,7 +56,7 @@ def _run_parsed_tests(parsed: dict, files: list[UploadedContextFile]) -> dict:
     if not parsed["test_cases"]:
         return {
             "status": "no_tests_detected",
-            "message": "No pytest-style test functions were found in the generated output.",
+            "message": "No Python test functions or unittest methods were found in the test source.",
             "pytest_summary": "",
             "per_test_results": [],
             "passed": 0,
@@ -91,7 +92,7 @@ def _run_parsed_tests(parsed: dict, files: list[UploadedContextFile]) -> dict:
         except subprocess.TimeoutExpired:
             return {
                 "status": "timeout",
-                "message": "Generated tests timed out during execution.",
+                "message": "Python test execution timed out.",
                 "pytest_summary": "",
                 "per_test_results": [],
                 "passed": 0,
@@ -113,13 +114,13 @@ def _run_parsed_tests(parsed: dict, files: list[UploadedContextFile]) -> dict:
 
     if completed.returncode == 0:
         status = "passed"
-        message = "Generated tests executed successfully against the uploaded files."
+        message = "Python tests executed successfully against the uploaded files."
     elif completed.returncode == 5:
         status = "no_tests_collected"
-        message = "Pytest ran but did not collect any tests from the generated output."
+        message = "The pytest runner did not collect any tests from the test source."
     else:
         status = "failed"
-        message = "Generated tests did not run cleanly against the uploaded files."
+        message = "Python tests did not run cleanly against the uploaded files."
 
     return {
         "status": status,
@@ -167,16 +168,21 @@ def _extract_primary_failure(output: str) -> str:
 
 
 def _extract_per_test_results(output: str, test_cases: list) -> list[dict]:
-    per_test_status = {
-        match.group("name"): match.group("status").lower()
-        for match in PER_TEST_STATUS_PATTERN.finditer(output)
-    }
+    per_test_status = {}
+    for match in PER_TEST_STATUS_PATTERN.finditer(output):
+        status = match.group("status").lower()
+        function_name = match.group("name")
+        class_name = match.group("class_name")
+        if class_name:
+            per_test_status[f"{class_name}.{function_name}"] = status
+        per_test_status[function_name] = status
     results = []
     for test_case in test_cases:
+        fallback_name = getattr(test_case, "function_name", "") or test_case.name.rsplit(".", 1)[-1]
         results.append(
             {
                 "name": test_case.name,
-                "status": per_test_status.get(test_case.name, "unknown"),
+                "status": per_test_status.get(test_case.name, per_test_status.get(fallback_name, "unknown")),
             }
         )
     return results

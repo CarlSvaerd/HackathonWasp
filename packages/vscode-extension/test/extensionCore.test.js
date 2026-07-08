@@ -1,6 +1,8 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const path = require("node:path");
+const fs = require("node:fs");
+const os = require("node:os");
 
 const core = require("../extensionCore");
 
@@ -55,18 +57,22 @@ test("parseTestFunctionLocations returns stable line ranges", () => {
   assert.deepEqual(locations, [
     {
       name: "test_login_accepts_user",
+      qualifiedName: "test_login_accepts_user",
       line: 3,
       start: 4,
       end: 27,
     },
     {
       name: "test_async_is_supported",
+      qualifiedName: "test_async_is_supported",
       line: 8,
       start: 10,
       end: 33,
     },
     {
       name: "test_class_method_is_supported",
+      qualifiedName: "TestAccountFlow.test_class_method_is_supported",
+      className: "TestAccountFlow",
       line: 12,
       start: 8,
       end: 38,
@@ -74,11 +80,27 @@ test("parseTestFunctionLocations returns stable line ranges", () => {
   ]);
 });
 
-test("isTestPath recognizes pytest naming and tests directories", () => {
+test("isTestPath recognizes Python test naming and tests directories", () => {
   assert.equal(core.isTestPath("/repo/tests/test_auth.py"), true);
   assert.equal(core.isTestPath("/repo/src/auth_test.py"), true);
   assert.equal(core.isTestPath("/repo/src/test_auth.py"), true);
   assert.equal(core.isTestPath("/repo/src/auth.py"), false);
+});
+
+test("findProjectRootForFile prefers a nested Python project over the open workspace", () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "ghost-workspace-"));
+  const project = path.join(workspace, "HackathonWasp");
+  const sourceRoot = path.join(project, "src", "llmSHAP", "ghost");
+  const testsRoot = path.join(project, "tests");
+  fs.mkdirSync(sourceRoot, { recursive: true });
+  fs.mkdirSync(testsRoot, { recursive: true });
+  fs.writeFileSync(path.join(project, "pyproject.toml"), "[project]\nname = \"demo\"\n", "utf-8");
+  fs.writeFileSync(path.join(sourceRoot, "cli.py"), "def main():\n    return 0\n", "utf-8");
+  const testFile = path.join(testsRoot, "test_demo.py");
+  fs.writeFileSync(testFile, "def test_demo():\n    assert True\n", "utf-8");
+
+  assert.equal(core.findProjectRootForFile(testFile, workspace), project);
+  assert.deepEqual(core.toRelativeSourcePaths(project, [path.join(project, "src", "demo.py")]), ["src/demo.py"]);
 });
 
 test("summarizeReports groups report verdicts for notifications", () => {
@@ -122,6 +144,9 @@ test("renderReportHtml escapes user-controlled text and includes exact evidence 
             evidence: { path: "src/auth.py", start_line: 1, end_line: 8 },
             evidence_symbols: ["login -> src/auth.py:1"],
             missing_symbols: ["chargeCustomer"],
+            framework: "unittest",
+            risk_categories: ["missing_symbols"],
+            recommendation: "Point the test at APIs that exist in the selected source context.",
           },
         ],
       },
@@ -132,5 +157,8 @@ test("renderReportHtml escapes user-controlled text and includes exact evidence 
   assert.ok(html.includes("tests/test_&lt;auth&gt;.py"));
   assert.ok(html.includes("Review &lt;script&gt;alert(1)&lt;/script&gt;"));
   assert.ok(html.includes("login -&gt; src/auth.py:1"));
+  assert.ok(html.includes("unittest"));
+  assert.ok(html.includes("missing_symbols"));
+  assert.ok(html.includes("Point the test at APIs"));
   assert.ok(!html.includes("<script>alert(1)</script>"));
 });

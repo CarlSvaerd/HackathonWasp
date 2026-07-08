@@ -1,7 +1,7 @@
 {
   "name": "ghost-test-catcher",
   "displayName": "Ghost Test Catcher",
-  "description": "Detect whether AI-generated pytest tests are grounded in your actual source code.",
+  "description": "Detect whether AI-generated Python tests are grounded in your actual source code.",
   "version": "0.1.0",
   "publisher": "carl-svaerd",
   "license": "MIT",
@@ -29,6 +29,7 @@
   ],
   "keywords": [
     "pytest",
+    "unittest",
     "testing",
     "ai-generated tests",
     "test verification",
@@ -44,6 +45,7 @@
     "onLanguage:python",
     "onCommand:ghostTestCatcher.analyzeCurrentTest",
     "onCommand:ghostTestCatcher.analyzeChangedTests",
+    "onCommand:ghostTestCatcher.analyzeSelectedFiles",
     "onCommand:ghostTestCatcher.openLastReport"
   ],
   "main": "./extension.js",
@@ -64,6 +66,10 @@
       {
         "command": "ghostTestCatcher.analyzeChangedTests",
         "title": "Ghost Test Catcher: Analyze Changed Test Files"
+      },
+      {
+        "command": "ghostTestCatcher.analyzeSelectedFiles",
+        "title": "Ghost Test Catcher: Analyze Selected Files or Folders"
       },
       {
         "command": "ghostTestCatcher.openLastReport",
@@ -91,7 +97,7 @@
         "ghostTestCatcher.executeTests": {
           "type": "boolean",
           "default": true,
-          "description": "Run pytest in an isolated temporary workspace during analysis."
+          "description": "Run the selected Python tests in an isolated temporary workspace during analysis."
         },
         "ghostTestCatcher.confirmExecution": {
           "type": "boolean",
@@ -121,6 +127,20 @@
         {
           "command": "ghostTestCatcher.analyzeCurrentTest",
           "when": "resourceLangId == python",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "ghostTestCatcher.analyzeSelectedFiles",
+          "when": "resourceLangId == python",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "ghostTestCatcher.analyzeSelectedFiles",
+          "when": "resourceLangId == python || explorerResourceIsFolder",
           "group": "navigation"
         }
       ]

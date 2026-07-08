@@ -5,7 +5,7 @@ This runbook turns the repository into a repeatable product release flow for the
 ## Release Readiness Criteria
 
 - The Python package installs with the `ghost` extra.
-- `ghost-test-catcher analyze` works against existing pytest files.
+- `ghost-test-catcher analyze` works against existing pytest-style files and `unittest.TestCase` files.
 - `ghost-test-catcher ci` writes both JSON and Markdown reports.
 - `ghost-test-catcher calibrate` passes every built-in calibration case.
 - The VS Code extension passes syntax checks and unit tests.
@@ -38,7 +38,7 @@ npm run package
 code --install-extension packages/vscode-extension/ghost-test-catcher-0.1.0.vsix --force
 ```
 
-After installation, open a Python repository, open a pytest file, and run `Ghost Test Catcher: Analyze Current Test File` from the command palette. The extension should show diagnostics on risky tests, CodeLens verdicts above tests, and a report panel through `Ghost Test Catcher: Open Last Report`.
+After installation, open a Python repository, open a test file, and run `Ghost Test Catcher: Analyze Current Test File` from the command palette. Also select a test file plus a source file in Explorer and run `Ghost Test Catcher: Analyze Selected Files or Folders`. The extension should show diagnostics on risky tests, CodeLens verdicts above tests, and a report panel through `Ghost Test Catcher: Open Last Report`.
 
 ## Marketplace Publishing Notes
 

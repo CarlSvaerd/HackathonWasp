@@ -69,7 +69,7 @@ def analyze_existing_tests(
     return {
         "analysis_mode": "analyze_existing_tests",
         "test_mode": test_mode,
-        "prompt": "Analyze existing pytest tests against the provided source/context files.",
+        "prompt": "Analyze existing Python tests against the provided source/context files.",
         "api_map": _build_api_map(context_files),
         "answer": answer,
         "sampler": "static_similarity",
@@ -79,6 +79,7 @@ def analyze_existing_tests(
             "syntax_error": extracted_tests["syntax_error"],
             "test_names": [test_case.name for test_case in extracted_tests["test_cases"]],
             "test_count": len(extracted_tests["test_cases"]),
+            "frameworks": extracted_tests.get("frameworks", ["unknown"]),
         },
         "verification": verification,
         "preflight": preflight,
@@ -139,7 +140,7 @@ def _build_static_weighted_files(files: list[UploadedContextFile], answer: str) 
 def _skipped_execution(extracted_tests: dict) -> dict:
     return {
         "status": "skipped",
-        "message": "Pytest execution was skipped by configuration.",
+        "message": "Python test execution was skipped by configuration.",
         "primary_failure": "",
         "pytest_summary": "",
         "per_test_results": [

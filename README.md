@@ -1,8 +1,8 @@
 # Ghost Test Catcher
 
-Ghost Test Catcher is a proof-of-concept trust checker for AI-generated software tests.
+Ghost Test Catcher is a developer tool for reviewing AI-generated software tests before you trust, keep, or merge them.
 
-Instead of only asking an LLM to create tests, this project checks whether those tests are actually supported by the uploaded source files, whether they run in `pytest`, and whether they look worth keeping or like ghost tests.
+Instead of only asking an LLM to create tests, this project checks whether those tests are actually supported by the uploaded source files, whether they run in an isolated Python test workspace, and whether they look worth keeping or like ghost tests.
 
 ## Why It Exists
 
@@ -29,7 +29,7 @@ Given a small set of uploaded files, the app:
 3. asks the LLM to generate tests,
 4. attributes which files influenced that output,
 5. verifies grounding and overall context match,
-6. runs the generated tests in `pytest`,
+6. runs the generated tests with the Python test runner,
 7. returns a trust-oriented verdict.
 
 The core idea is:
@@ -103,13 +103,15 @@ After generation, the app:
 - finds supporting snippets in the uploaded files,
 - labels tests as `supported`, `borderline`, or `unsupported`.
 
-### Execution
+### Test Execution
 
-The app writes the uploaded files and generated tests into a temporary workspace and runs:
+The app writes the uploaded files and generated tests into a temporary workspace and runs the pytest runner:
 
 ```bash
 pytest -vv -rA
 ```
+
+Pytest is used as the execution engine because it can collect both pytest-style `def test_*` functions and `unittest.TestCase` methods. That gives the product one isolated execution path while supporting both common Python test styles.
 
 This produces:
 
@@ -126,7 +128,7 @@ The UI shows:
 - ETV,
 - execution result,
 - per-test groundedness and execution,
-- pytest failures,
+- Python test failures,
 - grounding warnings,
 - weighted file influence,
 - evidence snippets.
@@ -179,9 +181,11 @@ Handles:
 Extracts generated Python tests and parses:
 
 - test names,
+- pytest-style functions and `unittest.TestCase` methods,
 - imports,
 - referenced symbols,
-- assertion count.
+- assertion count,
+- assertion style and detected framework.
 
 ### Grounding Verification
 
@@ -192,18 +196,19 @@ Computes:
 - groundedness score,
 - context relevance score,
 - supported/borderline/unsupported labels,
-- supporting snippets and evidence files.
+- supporting snippets and evidence files,
+- risk categories and per-test recommendations.
 
-### Pytest Execution
+### Python Test Execution
 
 `src/llmSHAP/webapp/execution.py`
 
-Runs generated tests against uploaded files and returns:
+Runs generated or selected Python tests against uploaded files and returns:
 
 - per-test status,
 - pass/fail/error counts,
 - primary failure message,
-- raw pytest summary.
+- raw test runner summary.
 
 ## Demo Scenarios
 
@@ -266,7 +271,7 @@ Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 ### Analyze existing tests from the CLI
 
 Ghost Test Catcher can also work as a developer tool without generating new tests.
-This is the mode used by the VS Code extension.
+This is the mode used by the VS Code extension. Existing-test analysis supports pytest-style functions and `unittest.TestCase` classes.
 
 ```bash
 python -m llmSHAP.ghost.cli analyze \
@@ -331,9 +336,11 @@ It provides:
 
 - `Ghost Test Catcher: Analyze Current Test File`
 - `Ghost Test Catcher: Analyze Changed Test Files`
-- inline diagnostics on `def test_*` functions
+- `Ghost Test Catcher: Analyze Selected Files or Folders`
+- inline diagnostics on `def test_*` functions and class-based test methods
 - CodeLens verdict summaries
-- a report panel with reliability, ETV, pytest status, evidence, and missing symbols
+- a report panel with reliability, ETV, framework, test-run status, risk categories, recommendations, evidence, and missing symbols
+- nested Python project detection when VS Code is opened at a parent folder
 
 For local development, open `packages/vscode-extension` in VS Code and run the extension host.
 The extension shells out to:
@@ -349,7 +356,7 @@ In another project, install the package into the configured Python environment:
 pip install -e ".[ghost]"
 ```
 
-When execution is enabled, pytest runs against a temporary copy of the selected tests and source files.
+When execution is enabled, the Python test runner runs against a temporary copy of the selected tests and source files.
 The extension asks for confirmation before executing tests by default.
 
 Package the extension locally with:
@@ -420,7 +427,7 @@ The product focus of this repo is now Ghost Test Catcher itself:
 
 ## Current Status
 
-This is a hackathon proof of concept.
+This is an early product build with a working CLI, web app, CI mode, and VS Code extension.
 
 The trust thresholds and score cutoffs are prototype heuristics, not calibrated benchmark values.
 

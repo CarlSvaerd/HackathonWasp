@@ -21,23 +21,27 @@ PROMPT_KEY = "__prompt__"
 API_MAP_KEY = "__api_map__"
 TEST_MODE_PROMPTS = {
     "unit": (
-        "Generate runnable pytest unit tests for the uploaded files. "
+        "Generate runnable Python unit tests for the uploaded files. "
         "Focus on pure function behavior, edge cases, validation rules, and failure paths. "
-        "Return only Python code in a single ```python``` block with pytest-style test functions."
+        "Use pytest-style test functions or unittest.TestCase classes when they fit the codebase. "
+        "Return only Python code in a single ```python``` block."
     ),
     "integration": (
-        "Generate runnable pytest integration tests for the uploaded files. "
+        "Generate runnable Python integration tests for the uploaded files. "
         "Focus on interactions between modules, shared data flow, and cross-file behavior. "
-        "Return only Python code in a single ```python``` block with pytest-style test functions."
+        "Use pytest-style test functions or unittest.TestCase classes when they fit the codebase. "
+        "Return only Python code in a single ```python``` block."
     ),
     "e2e": (
-        "Generate runnable pytest end-to-end style tests for the uploaded files. "
+        "Generate runnable Python end-to-end style tests for the uploaded files. "
         "Focus on realistic user-facing flows, system outcomes, and multi-step behavior that can be inferred from the code. "
-        "Return only Python code in a single ```python``` block with pytest-style test functions."
+        "Use pytest-style test functions or unittest.TestCase classes when they fit the codebase. "
+        "Return only Python code in a single ```python``` block."
     ),
     "mixed": (
-        "Generate a small mixed pack of runnable pytest tests covering unit, integration, and end-to-end style behavior for the uploaded files. "
-        "Return only Python code in a single ```python``` block with pytest-style test functions."
+        "Generate a small mixed pack of runnable Python tests covering unit, integration, and end-to-end style behavior for the uploaded files. "
+        "Use pytest-style test functions or unittest.TestCase classes when they fit the codebase. "
+        "Return only Python code in a single ```python``` block."
     ),
 }
 DEFAULT_INSTRUCTIONS = (
@@ -199,6 +203,7 @@ def analyze_uploaded_files(
             "syntax_error": extracted_tests["syntax_error"],
             "test_names": [test_case.name for test_case in extracted_tests["test_cases"]],
             "test_count": len(extracted_tests["test_cases"]),
+            "frameworks": extracted_tests.get("frameworks", ["unknown"]),
         },
         "verification": verification,
         "preflight": preflight,
@@ -240,7 +245,7 @@ def _build_api_map(files: list[UploadedContextFile]) -> str:
     if not modules:
         return "[no-python-api-map] No Python modules were detected."
 
-    lines = ["Use these exact import paths and symbol names when generating pytest code."]
+    lines = ["Use these exact import paths and symbol names when generating Python test code."]
     for module in sorted(modules, key=lambda item: item["module"]):
         lines.append(f"- module: {module['module']} ({module['path']})")
         lines.append(f"  functions: {', '.join(module['functions']) if module['functions'] else '[none]'}")
@@ -465,7 +470,7 @@ def _build_preflight_assessment(extracted_tests: dict, verification: dict, files
 
     available_modules = _available_modules(files)
     stdlib_modules = set(getattr(sys, "stdlib_module_names", set()))
-    allowed_modules = available_modules | stdlib_modules | {"pytest"}
+    allowed_modules = available_modules | stdlib_modules | {"pytest", "unittest"}
     imported_modules = set(extracted_tests.get("module_imports", []))
     missing_imports = sorted(module for module in imported_modules if module not in allowed_modules)
 

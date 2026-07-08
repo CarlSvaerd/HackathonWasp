@@ -1,4 +1,5 @@
 const path = require("path");
+const fs = require("fs");
 
 function buildAnalyzeArgs({ root, testFile, sourcePaths, testMode, maxFiles, executeTests }) {
   const relativeTestFile = toPosixPath(path.relative(root, testFile));
@@ -30,38 +31,44 @@ function buildAnalyzeArgs({ root, testFile, sourcePaths, testMode, maxFiles, exe
 function parseTestFunctionLocations(text) {
   const locations = [];
   const lines = text.split(/\r?\n/);
-  const classIndents = [];
-  const classPattern = /^(\s*)class\s+[A-Za-z_][A-Za-z0-9_]*\b/;
+  const classStack = [];
+  const classPattern = /^(\s*)class\s+([A-Za-z_][A-Za-z0-9_]*)\b/;
   const testPattern = /^(\s*)(?:async\s+)?def\s+(test_[A-Za-z0-9_]+)\s*\(/;
   for (let line = 0; line < lines.length; line += 1) {
     const textLine = lines[line];
     const indent = leadingSpaces(textLine);
-    while (classIndents.length && indent <= classIndents[classIndents.length - 1] && textLine.trim()) {
-      classIndents.pop();
+    while (classStack.length && indent <= classStack[classStack.length - 1].indent && textLine.trim()) {
+      classStack.pop();
     }
 
     const classMatch = classPattern.exec(textLine);
     if (classMatch) {
-      classIndents.push(classMatch[1].length);
+      classStack.push({ name: classMatch[2], indent: classMatch[1].length });
       continue;
     }
 
     const match = testPattern.exec(textLine);
     if (match) {
       const defIndent = match[1].length;
-      const classIndent = classIndents[classIndents.length - 1];
+      const classEntry = classStack[classStack.length - 1];
+      const classIndent = classEntry?.indent;
       const isTopLevel = defIndent === 0;
       const isDirectClassMethod = classIndent !== undefined && defIndent === classIndent + 4;
       if (!isTopLevel && !isDirectClassMethod) {
         continue;
       }
       const start = textLine.indexOf(match[2]);
-      locations.push({
+      const location = {
         name: match[2],
+        qualifiedName: isDirectClassMethod ? `${classEntry.name}.${match[2]}` : match[2],
         line,
         start: Math.max(0, start),
         end: start + match[2].length,
-      });
+      };
+      if (isDirectClassMethod) {
+        location.className = classEntry.name;
+      }
+      locations.push(location);
     }
   }
   return locations;
@@ -76,6 +83,73 @@ function isTestPath(file) {
   const normalized = toPosixPath(file).toLowerCase();
   const filename = path.basename(normalized);
   return normalized.includes("/tests/") || filename.startsWith("test_") || filename.endsWith("_test.py");
+}
+
+function isPythonPath(file) {
+  return toPosixPath(file).toLowerCase().endsWith(".py");
+}
+
+function findProjectRootForFile(file, workspaceRoot) {
+  const resolvedWorkspace = path.resolve(workspaceRoot);
+  let cursor = fs.existsSync(file) && fs.statSync(file).isDirectory()
+    ? path.resolve(file)
+    : path.dirname(path.resolve(file));
+
+  while (isInsideOrEqual(cursor, resolvedWorkspace)) {
+    if (looksLikeGhostProjectRoot(cursor) || looksLikePythonProjectRoot(cursor)) {
+      return cursor;
+    }
+    const parent = path.dirname(cursor);
+    if (parent === cursor) {
+      break;
+    }
+    cursor = parent;
+  }
+  return resolvedWorkspace;
+}
+
+function looksLikeGhostProjectRoot(candidate) {
+  return (
+    fs.existsSync(path.join(candidate, "src", "llmSHAP", "ghost", "cli.py")) ||
+    fs.existsSync(path.join(candidate, ".ghosttest.toml"))
+  );
+}
+
+function looksLikePythonProjectRoot(candidate) {
+  return (
+    fs.existsSync(path.join(candidate, "pyproject.toml")) ||
+    fs.existsSync(path.join(candidate, "setup.py")) ||
+    fs.existsSync(path.join(candidate, "setup.cfg"))
+  );
+}
+
+function isInsideOrEqual(child, parent) {
+  const relative = path.relative(parent, child);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function relativePathFromRoot(root, file) {
+  const relative = path.relative(root, file);
+  if (relative === "") {
+    return ".";
+  }
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    return null;
+  }
+  return toPosixPath(relative);
+}
+
+function toRelativeSourcePaths(root, sourceFiles) {
+  const seen = new Set();
+  const relativePaths = [];
+  for (const sourceFile of sourceFiles || []) {
+    const relative = relativePathFromRoot(root, sourceFile);
+    if (relative && !seen.has(relative)) {
+      seen.add(relative);
+      relativePaths.push(relative);
+    }
+  }
+  return relativePaths;
 }
 
 function summarizeReports(reports) {
@@ -131,6 +205,8 @@ function renderReportHtml(reports) {
     .borderline, .skipped, .needs_review { color: #d7a642; }
     .unsupported, .failed, .error, .ghost_risk { color: #e06c75; }
     .evidence { color: #9cdcfe; font-family: var(--vscode-editor-font-family); font-size: 12px; }
+    .recommendation { min-width: 220px; }
+    .muted { color: #9e9e9e; }
     @media (max-width: 820px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   </style>
 </head>
@@ -151,15 +227,20 @@ function renderSingleReport(result) {
     const check = checks.get(name) || {};
     const run = runs.get(name) || {};
     const evidence = check.evidence ? `${check.evidence.path}:${check.evidence.start_line}-${check.evidence.end_line}` : "No evidence";
-    const missing = (check.missing_symbols || []).join(", ");
+    const missing = (check.missing_symbols || []).join(", ") || "-";
     const exactEvidence = (check.evidence_symbols || []).join(", ");
+    const categories = (check.risk_categories || []).join(", ") || "-";
+    const recommendation = check.recommendation || "-";
     return `<tr>
       <td><code>${escapeHtml(name)}</code></td>
+      <td>${escapeHtml(check.framework || "unknown")}</td>
       <td class="${escapeHtml(check.status || "unsupported")}">${escapeHtml(supportLabel(check.status || "unsupported"))}</td>
       <td>${escapeHtml(percent(Number(check.confidence || 0)))}</td>
       <td class="${escapeHtml(run.status || "unknown")}">${escapeHtml(run.status || "unknown")}</td>
+      <td class="muted">${escapeHtml(categories)}</td>
       <td class="evidence">${escapeHtml(evidence)}${exactEvidence ? `<br>${escapeHtml(exactEvidence)}` : ""}</td>
       <td>${escapeHtml(missing)}</td>
+      <td class="recommendation">${escapeHtml(recommendation)}</td>
     </tr>`;
   }).join("");
 
@@ -177,9 +258,9 @@ function renderSingleReport(result) {
     </div>
     <table>
       <thead>
-        <tr><th>Test</th><th>Grounding</th><th>Confidence</th><th>Pytest</th><th>Evidence</th><th>Missing</th></tr>
+        <tr><th>Test</th><th>Framework</th><th>Grounding</th><th>Confidence</th><th>Run</th><th>Categories</th><th>Evidence</th><th>Missing</th><th>Recommendation</th></tr>
       </thead>
-      <tbody>${rows || "<tr><td colspan=\"6\">No pytest functions detected.</td></tr>"}</tbody>
+      <tbody>${rows || "<tr><td colspan=\"9\">No Python tests detected.</td></tr>"}</tbody>
     </table>
   </section>`;
 }
@@ -232,14 +313,18 @@ function escapeHtml(value) {
 module.exports = {
   buildAnalyzeArgs,
   escapeHtml,
+  findProjectRootForFile,
   isTestPath,
+  isPythonPath,
   mapBy,
   normalizePath,
   parseTestFunctionLocations,
   percent,
   renderReportHtml,
+  relativePathFromRoot,
   summarizeReports,
   supportLabel,
+  toRelativeSourcePaths,
   toPosixPath,
   verdictLabel,
 };
