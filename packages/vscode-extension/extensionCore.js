@@ -1,5 +1,6 @@
 const path = require("path");
 const fs = require("fs");
+const WEBVIEW_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;";
 
 function buildAnalyzeArgs({ root, testFile, sourcePaths, testMode, maxFiles, executeTests }) {
   const relativeTestFile = toPosixPath(path.relative(root, testFile));
@@ -275,6 +276,7 @@ function renderReportHtml(reports) {
 <html>
 <head>
   <meta charset="UTF-8">
+  ${webviewCspMeta()}
   <style>
     body { margin: 0; padding: 24px; color: #d4d4d4; background: #1e1e1e; font-family: var(--vscode-font-family); }
     h1, h2, h3 { color: #f3f3f3; margin: 0; }
@@ -320,6 +322,7 @@ function renderDoctorHtml(report) {
 <html>
 <head>
   <meta charset="UTF-8">
+  ${webviewCspMeta()}
   <style>
     body { margin: 0; padding: 24px; color: #d4d4d4; background: #1e1e1e; font-family: var(--vscode-font-family); }
     h1, h2, h3 { color: #f3f3f3; margin: 0; }
@@ -370,6 +373,10 @@ function renderDoctorHtml(report) {
   </div>
 </body>
 </html>`;
+}
+
+function webviewCspMeta() {
+  return `<meta http-equiv="Content-Security-Policy" content="${WEBVIEW_CSP}">`;
 }
 
 function listItems(items) {

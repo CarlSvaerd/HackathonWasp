@@ -8,15 +8,20 @@ let diagnostics;
 let codeLensChanged;
 let reportPanel;
 let doctorPanel;
+let outputChannel;
 let lastReports = [];
 const reportsByFile = new Map();
+const ANALYSIS_TIMEOUT_MS = 120000;
+const DOCTOR_TIMEOUT_MS = 30000;
 
 function activate(context) {
   diagnostics = vscode.languages.createDiagnosticCollection("ghost-test-catcher");
   codeLensChanged = new vscode.EventEmitter();
+  outputChannel = vscode.window.createOutputChannel("Ghost Test Catcher");
 
   context.subscriptions.push(diagnostics);
   context.subscriptions.push(codeLensChanged);
+  context.subscriptions.push(outputChannel);
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.analyzeCurrentTest", analyzeCurrentTest));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.analyzeChangedTests", analyzeChangedTests));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.analyzeSelectedFiles", analyzeSelectedFiles));
@@ -113,8 +118,24 @@ async function analyzeSelectedFiles(uri, selectedUris) {
 }
 
 async function analyzeFiles(testFiles, title, options = {}) {
-  const executeTests = getConfig().get("executeTests", true);
-  const confirmExecution = getConfig().get("confirmExecution", true);
+  const config = getConfig();
+  let executeTests = config.get("executeTests", true);
+  const confirmExecution = config.get("confirmExecution", true);
+  const requireWorkspaceTrust = config.get("requireWorkspaceTrustForExecution", true);
+
+  if (executeTests && requireWorkspaceTrust && !vscode.workspace.isTrusted) {
+    const choice = await vscode.window.showWarningMessage(
+      "Ghost Test Catcher will not execute Python tests in an untrusted workspace. Run static analysis only instead?",
+      { modal: false },
+      "Run Static Analysis",
+      "Cancel"
+    );
+    if (choice !== "Run Static Analysis") {
+      return;
+    }
+    executeTests = false;
+  }
+
   if (executeTests && confirmExecution) {
     const choice = await vscode.window.showWarningMessage(
       "Ghost Test Catcher will execute Python tests against a temporary copy of the selected tests and source files.",
@@ -131,25 +152,40 @@ async function analyzeFiles(testFiles, title, options = {}) {
     {
       location: vscode.ProgressLocation.Notification,
       title,
-      cancellable: false,
+      cancellable: true,
     },
-    async (progress) => {
+    async (progress, token) => {
       const reports = [];
       try {
         for (let index = 0; index < testFiles.length; index += 1) {
+          if (token.isCancellationRequested) {
+            vscode.window.showInformationMessage("Ghost Test Catcher analysis cancelled.");
+            return;
+          }
           const testFile = testFiles[index];
           progress.report({
-            message: path.basename(testFile),
-            increment: testFiles.length ? 100 / testFiles.length : 100,
+            message: `${index + 1}/${testFiles.length}: ${path.basename(testFile)}`,
+            increment: 0,
           });
-          const result = await runCli(testFile, executeTests, options.sourceFiles || []);
+          const result = await runCli(testFile, executeTests, options.sourceFiles || [], token);
           result.__testFile = testFile;
           reports.push(result);
           applyDiagnostics(testFile, result);
           reportsByFile.set(core.normalizePath(testFile), result);
+          progress.report({
+            increment: testFiles.length ? 100 / testFiles.length : 100,
+          });
         }
       } catch (error) {
+        if (isCancellationError(error)) {
+          vscode.window.showInformationMessage("Ghost Test Catcher analysis cancelled.");
+          return;
+        }
+        logOutput(`Analysis failed: ${error.message}`);
         vscode.window.showErrorMessage(`Ghost Test Catcher failed: ${error.message}`);
+        return;
+      }
+      if (!reports.length) {
         return;
       }
       lastReports = reports;
@@ -163,7 +199,7 @@ async function analyzeFiles(testFiles, title, options = {}) {
   );
 }
 
-async function runCli(testFile, executeTests, selectedSourceFiles = []) {
+async function runCli(testFile, executeTests, selectedSourceFiles = [], token) {
   const workspaceFolder = getWorkspaceFolderForFile(testFile);
   if (!workspaceFolder) {
     throw new Error("The selected test file is not inside an open workspace.");
@@ -190,11 +226,15 @@ async function runCli(testFile, executeTests, selectedSourceFiles = []) {
 
   const pythonPath = config.get("pythonPath", "python");
   const env = buildPythonEnv(root);
+  const label = `analysis for ${path.relative(root, testFile)}`;
 
   const { stdout, stderr } = await execFile(pythonPath, args, {
     cwd: root,
     env,
     maxBuffer: 20 * 1024 * 1024,
+    timeout: ANALYSIS_TIMEOUT_MS,
+    token,
+    label,
   });
 
   try {
@@ -204,6 +244,7 @@ async function runCli(testFile, executeTests, selectedSourceFiles = []) {
     return result;
   } catch (error) {
     const detail = stderr ? `${stdout}\n${stderr}` : stdout;
+    logOutput(`Invalid JSON from ${label}:\n${detail}`);
     throw new Error(`Ghost Test Catcher returned invalid JSON.\n${detail}`);
   }
 }
@@ -234,9 +275,9 @@ async function runDoctor(uri) {
     {
       location: vscode.ProgressLocation.Notification,
       title: "Running Ghost Test Catcher Doctor",
-      cancellable: false,
+      cancellable: true,
     },
-    async () => {
+    async (progress, token) => {
       const report = {
         root,
         pythonPath,
@@ -248,26 +289,54 @@ async function runDoctor(uri) {
       };
 
       try {
+        progress.report({ message: "Checking Python module import" });
         const importCheck = await execFile(
           pythonPath,
           ["-c", "import llmSHAP.ghost.cli as cli; print(cli.__file__)"],
-          { cwd: root, env, maxBuffer: 1024 * 1024, timeout: 20000 }
+          {
+            cwd: root,
+            env,
+            maxBuffer: 1024 * 1024,
+            timeout: DOCTOR_TIMEOUT_MS,
+            token,
+            label: "doctor import check",
+          }
         );
         report.importOk = true;
         report.importMessage = `Loaded llmSHAP.ghost.cli from ${importCheck.stdout.trim()}.`;
       } catch (error) {
+        if (isCancellationError(error)) {
+          vscode.window.showInformationMessage("Ghost Test Catcher Doctor cancelled.");
+          return;
+        }
         report.importOk = false;
         report.importMessage = `Could not import llmSHAP.ghost.cli with the configured Python path. ${error.message}`;
       }
 
       try {
+        if (token.isCancellationRequested) {
+          vscode.window.showInformationMessage("Ghost Test Catcher Doctor cancelled.");
+          return;
+        }
+        progress.report({ message: "Inspecting CLI configuration" });
         const doctorResult = await execFile(
           pythonPath,
           ["-m", "llmSHAP.ghost.cli", "doctor", "--repo", root],
-          { cwd: root, env, maxBuffer: 5 * 1024 * 1024, timeout: 20000 }
+          {
+            cwd: root,
+            env,
+            maxBuffer: 5 * 1024 * 1024,
+            timeout: DOCTOR_TIMEOUT_MS,
+            token,
+            label: "doctor CLI inspection",
+          }
         );
         report.doctor = JSON.parse(doctorResult.stdout);
       } catch (error) {
+        if (isCancellationError(error)) {
+          vscode.window.showInformationMessage("Ghost Test Catcher Doctor cancelled.");
+          return;
+        }
         report.doctor = {
           config: {
             source_paths: configuredSourcePaths,
@@ -297,7 +366,7 @@ function openDoctorReport(report) {
       "ghostTestCatcherDoctor",
       "Ghost Test Catcher Doctor",
       vscode.ViewColumn.Beside,
-      { enableScripts: false, retainContextWhenHidden: true }
+      { enableScripts: false, retainContextWhenHidden: true, localResourceRoots: [] }
     );
     doctorPanel.onDidDispose(() => {
       doctorPanel = undefined;
@@ -354,7 +423,7 @@ function openLastReport(explicitResult) {
       "ghostTestCatcherReport",
       "Ghost Test Catcher",
       vscode.ViewColumn.Beside,
-      { enableScripts: false, retainContextWhenHidden: true }
+      { enableScripts: false, retainContextWhenHidden: true, localResourceRoots: [] }
     );
     reportPanel.onDidDispose(() => {
       reportPanel = undefined;
@@ -415,7 +484,11 @@ function diagnosticSeverity(groundedStatus, executionStatus) {
 }
 
 function gitChangedFiles(root) {
-  return execFile("git", ["diff", "--name-only", "HEAD"], { cwd: root })
+  return execFile("git", ["diff", "--name-only", "HEAD"], {
+    cwd: root,
+    timeout: DOCTOR_TIMEOUT_MS,
+    label: "git changed files",
+  })
     .then(({ stdout }) => stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean))
     .catch(() => []);
 }
@@ -423,7 +496,11 @@ function gitChangedFiles(root) {
 function buildPythonEnv(root) {
   const env = { ...process.env };
   const srcPath = path.join(root, "src");
-  env.PYTHONPATH = env.PYTHONPATH ? `${srcPath}${path.delimiter}${env.PYTHONPATH}` : srcPath;
+  const entries = [srcPath, root];
+  if (env.PYTHONPATH) {
+    entries.push(env.PYTHONPATH);
+  }
+  env.PYTHONPATH = entries.join(path.delimiter);
   return env;
 }
 
@@ -485,17 +562,157 @@ function shouldSkipDirectory(directory) {
   ].includes(name) || normalized.endsWith("/docs/_build");
 }
 
-function execFile(command, args, options) {
+function execFile(command, args, options = {}) {
   return new Promise((resolve, reject) => {
-    childProcess.execFile(command, args, options, (error, stdout, stderr) => {
-      if (error) {
-        const message = stderr || stdout || error.message;
-        reject(new Error(message));
+    const label = options.label || command;
+    const timeoutMs = options.timeout || options.timeoutMs || 0;
+    const maxBuffer = options.maxBuffer || 10 * 1024 * 1024;
+    const child = childProcess.spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env,
+      shell: false,
+      windowsHide: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    let timeoutHandle;
+    let cancellation;
+
+    logOutput(`Running ${label}: ${command} ${args.map(quoteForLog).join(" ")}`);
+
+    const cleanup = () => {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+      if (cancellation) {
+        cancellation.dispose();
+      }
+    };
+    const finishResolve = (value) => {
+      if (settled) {
         return;
       }
-      resolve({ stdout, stderr });
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const finishReject = (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const stopProcess = (message) => {
+      terminateProcess(child);
+      const error = new Error(message);
+      error.cancelled = message.toLowerCase().includes("cancelled");
+      finishReject(error);
+    };
+    const appendStdout = (chunk) => {
+      stdout += chunk;
+      if (Buffer.byteLength(stdout, "utf8") > maxBuffer) {
+        stopProcess(`${label} produced more than ${maxBuffer} bytes of stdout.`);
+      }
+    };
+    const appendStderr = (chunk) => {
+      stderr += chunk;
+      appendOutput(chunk);
+      if (Buffer.byteLength(stderr, "utf8") > maxBuffer) {
+        stopProcess(`${label} produced more than ${maxBuffer} bytes of stderr.`);
+      }
+    };
+
+    if (child.stdout) {
+      child.stdout.setEncoding("utf8");
+      child.stdout.on("data", appendStdout);
+    }
+    if (child.stderr) {
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", appendStderr);
+    }
+
+    child.on("error", (error) => {
+      finishReject(error);
     });
+    child.on("close", (code) => {
+      if (settled) {
+        return;
+      }
+      if (code === 0) {
+        finishResolve({ stdout, stderr });
+        return;
+      }
+      const message = stderr.trim() || stdout.trim() || `${label} exited with code ${code}.`;
+      const error = new Error(message);
+      error.stdout = stdout;
+      error.stderr = stderr;
+      error.exitCode = code;
+      finishReject(error);
+    });
+
+    if (timeoutMs > 0) {
+      timeoutHandle = setTimeout(() => {
+        stopProcess(`${label} timed out after ${Math.round(timeoutMs / 1000)} seconds.`);
+      }, timeoutMs);
+    }
+    if (options.token) {
+      cancellation = options.token.onCancellationRequested(() => {
+        stopProcess(`${label} was cancelled.`);
+      });
+      if (options.token.isCancellationRequested) {
+        stopProcess(`${label} was cancelled.`);
+      }
+    }
   });
+}
+
+function terminateProcess(child) {
+  if (!child.pid) {
+    return;
+  }
+  if (process.platform === "win32") {
+    const killer = childProcess.spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+      windowsHide: true,
+      stdio: "ignore",
+    });
+    killer.on("error", () => {
+      child.kill();
+    });
+    return;
+  }
+  child.kill("SIGTERM");
+  const killTimer = setTimeout(() => {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGKILL");
+    }
+  }, 3000);
+  if (typeof killTimer.unref === "function") {
+    killTimer.unref();
+  }
+}
+
+function isCancellationError(error) {
+  return Boolean(error?.cancelled) || /cancelled/i.test(error?.message || "");
+}
+
+function quoteForLog(value) {
+  const text = String(value);
+  return /\s/.test(text) ? `"${text.replace(/"/g, '\\"')}"` : text;
+}
+
+function logOutput(message) {
+  if (outputChannel) {
+    outputChannel.appendLine(`[${new Date().toISOString()}] ${message}`);
+  }
+}
+
+function appendOutput(message) {
+  if (outputChannel) {
+    outputChannel.append(String(message));
+  }
 }
 
 function getConfig() {

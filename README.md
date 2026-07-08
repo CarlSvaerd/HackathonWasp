@@ -344,6 +344,9 @@ It provides:
 - smart source context that resolves local imports from the active test before broader configured source folders
 - nested Python project detection when VS Code is opened at a parent folder
 - a Doctor report for Python path, module importability, CLI config, discovered source paths, and discovered test paths
+- cancellable analysis and Doctor runs with timeout-backed Python process termination
+- a `Ghost Test Catcher` output channel for CLI stderr and failure details
+- limited VS Code Workspace Trust support that offers static analysis instead of test execution in untrusted workspaces
 
 For local development, open `packages/vscode-extension` in VS Code and run the extension host.
 The extension shells out to:
@@ -361,6 +364,7 @@ pip install -e ".[ghost]"
 
 When execution is enabled, the Python test runner runs against a temporary copy of the selected tests and source files.
 The extension asks for confirmation before executing tests by default.
+If VS Code marks the workspace as untrusted, the extension will not execute tests while `ghostTestCatcher.requireWorkspaceTrustForExecution` is enabled. It offers to run static grounding analysis instead.
 
 Package the extension locally with:
 

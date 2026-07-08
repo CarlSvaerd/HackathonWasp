@@ -87,6 +87,9 @@ The extension provides:
 * smart source context that resolves local imports from the active test before broader configured source folders
 * nested Python project root detection when VS Code is opened at a parent folder
 * a Doctor report for Python path, module importability, CLI config, discovered source paths, and discovered test paths
+* cancellable analysis and Doctor runs with timeout-backed Python process termination
+* a ``Ghost Test Catcher`` output channel for CLI stderr and failure details
+* limited VS Code Workspace Trust support that offers static analysis instead of test execution in untrusted workspaces
 
 Package the local extension:
 
@@ -139,3 +142,9 @@ autoloading disabled. Pytest is used as the execution engine because it can
 collect both pytest-style functions and ``unittest.TestCase`` methods. This
 avoids modifying the workspace during analysis, but it still executes Python
 code. Keep confirmation enabled for untrusted generated tests.
+
+The VS Code extension declares limited untrusted-workspace support. When
+``ghostTestCatcher.requireWorkspaceTrustForExecution`` is enabled, test
+execution is blocked in untrusted workspaces and the extension offers static
+grounding analysis instead. Report webviews disable scripts, deny local
+resource roots, and include a restrictive Content Security Policy.

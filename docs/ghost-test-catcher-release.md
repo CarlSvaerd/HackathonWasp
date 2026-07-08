@@ -10,6 +10,8 @@ This runbook turns the repository into a repeatable product release flow for the
 - `ghost-test-catcher calibrate` passes every built-in calibration case.
 - The VS Code extension passes syntax checks and unit tests.
 - The VS Code extension packages into a `.vsix` that includes the icon, changelog, README, manifest, and extension code.
+- The VS Code extension can cancel analysis and Doctor runs without leaving a stuck progress notification.
+- The VS Code extension blocks test execution in untrusted workspaces when `ghostTestCatcher.requireWorkspaceTrustForExecution` is enabled and offers static analysis instead.
 
 ## Local Verification Commands
 
@@ -39,6 +41,10 @@ code --install-extension packages/vscode-extension/ghost-test-catcher-0.1.0.vsix
 ```
 
 After installation, open a Python repository, open a test file, and run `Ghost Test Catcher: Run Doctor` from the command palette. The Doctor report should show the resolved project root, configured Python path, successful `llmSHAP.ghost.cli` import, source paths, and discovered tests. Then run `Ghost Test Catcher: Analyze Current Test File`. Also select a test file plus a source file in Explorer and run `Ghost Test Catcher: Analyze Selected Files or Folders`. The extension should show diagnostics on risky tests, CodeLens verdicts above tests, and a report panel through `Ghost Test Catcher: Open Last Report`.
+
+Open `View: Toggle Output`, choose the `Ghost Test Catcher` output channel, and confirm process starts, stderr, and failure details are written there. Start a long analysis or Doctor run and click Cancel in the VS Code progress notification; the notification should close cleanly and the output channel should not keep receiving new process output.
+
+For Workspace Trust smoke testing, open the same repository as an untrusted workspace, keep `ghostTestCatcher.requireWorkspaceTrustForExecution` set to `true`, and run `Ghost Test Catcher: Analyze Current Test File`. The extension should warn that test execution is blocked and offer `Run Static Analysis`. Choosing that option should produce a report without executing tests.
 
 ## Marketplace Publishing Notes
 

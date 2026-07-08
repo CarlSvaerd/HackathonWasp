@@ -14,6 +14,9 @@ Ghost Test Catcher checks whether Python test files are grounded in the source c
 - Open a report panel with reliability, ETV, framework, run status, risk categories, recommendations, evidence, and missing symbols.
 - Detect nested Python project roots when VS Code is opened at a parent folder.
 - Run a setup Doctor report that checks project root detection, Python importability, CLI config, discovered sources, and discovered tests.
+- Cancel long-running analysis and Doctor runs from the VS Code progress notification.
+- Write CLI stderr, process starts, and failure details to the `Ghost Test Catcher` output channel.
+- Respect VS Code Workspace Trust by falling back to static analysis in untrusted workspaces unless execution trust enforcement is disabled.
 
 ## Requirements
 
@@ -39,13 +42,18 @@ During local development from this repository, the extension automatically prepe
 - `ghostTestCatcher.sourcePaths`: source/context paths. Defaults to `["src"]`.
 - `ghostTestCatcher.smartSourceContext`: include local imports from the selected test file before configured source paths. Defaults to `true`.
 - `ghostTestCatcher.executeTests`: run selected Python tests in a temporary workspace. Defaults to `true`.
+- `ghostTestCatcher.requireWorkspaceTrustForExecution`: require a trusted VS Code workspace before executing selected Python tests. Defaults to `true`.
 - `ghostTestCatcher.confirmExecution`: ask before executing tests. Defaults to `true`.
 - `ghostTestCatcher.testMode`: one of `unit`, `integration`, `e2e`, or `mixed`.
 - `ghostTestCatcher.maxFiles`: maximum source/context files read.
 
 ## Security Model
 
-When execution is enabled, the extension asks the CLI to copy selected tests and source files into a temporary directory and run the pytest runner there with plugin autoloading disabled. Pytest is used as the runner because it collects both pytest-style functions and `unittest.TestCase` methods. This is safer than running in-place, but it still executes Python test code. Keep confirmation enabled for untrusted files.
+When execution is enabled, the extension asks the CLI to copy selected tests and source files into a temporary directory and run the pytest runner there with plugin autoloading disabled. Pytest is used as the runner because it collects both pytest-style functions and `unittest.TestCase` methods. This is safer than running in-place, but it still executes Python test code.
+
+The extension declares limited untrusted-workspace support. In an untrusted VS Code workspace, `ghostTestCatcher.executeTests` is treated as restricted when `ghostTestCatcher.requireWorkspaceTrustForExecution` is enabled. If you start analysis there, Ghost Test Catcher offers to run static analysis only and will not execute the selected tests.
+
+Report webviews disable scripts, deny local resource roots, and include a restrictive Content Security Policy. CLI processes have timeouts and are terminated when the user cancels the VS Code progress notification.
 
 ## Local Checks
 

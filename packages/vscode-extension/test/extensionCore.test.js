@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 
 const core = require("../extensionCore");
+const manifest = require("../package.json");
 
 test("buildAnalyzeArgs creates the CLI contract used by the extension", () => {
   const root = path.join("C:", "workspace", "project");
@@ -162,6 +163,15 @@ test("summarizeReports groups report verdicts for notifications", () => {
   });
 });
 
+test("package manifest declares limited workspace trust and guarded execution", () => {
+  assert.equal(manifest.capabilities.untrustedWorkspaces.supported, "limited");
+  assert.ok(manifest.capabilities.untrustedWorkspaces.restrictedConfigurations.includes("ghostTestCatcher.executeTests"));
+  assert.equal(
+    manifest.contributes.configuration.properties["ghostTestCatcher.requireWorkspaceTrustForExecution"].default,
+    true
+  );
+});
+
 test("renderDoctorHtml escapes setup details and includes inferred source files", () => {
   const html = core.renderDoctorHtml({
     root: "C:/repo/<demo>",
@@ -178,6 +188,8 @@ test("renderDoctorHtml escapes setup details and includes inferred source files"
   });
 
   assert.ok(html.includes("Ghost Test Catcher Doctor"));
+  assert.ok(html.includes("Content-Security-Policy"));
+  assert.ok(html.includes("default-src 'none'"));
   assert.ok(html.includes("C:/repo/&lt;demo&gt;"));
   assert.ok(html.includes("src/&lt;auth&gt;.py"));
   assert.ok(html.includes("Could not import &lt;module&gt;"));
@@ -220,6 +232,8 @@ test("renderReportHtml escapes user-controlled text and includes exact evidence 
   ]);
 
   assert.ok(html.includes("Ghost Test Catcher"));
+  assert.ok(html.includes("Content-Security-Policy"));
+  assert.ok(html.includes("default-src 'none'"));
   assert.ok(html.includes("tests/test_&lt;auth&gt;.py"));
   assert.ok(html.includes("Review &lt;script&gt;alert(1)&lt;/script&gt;"));
   assert.ok(html.includes("login -&gt; src/auth.py:1"));
