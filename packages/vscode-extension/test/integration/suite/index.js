@@ -5,6 +5,7 @@ const vscode = require("vscode");
 const EXTENSION_ID = "carl-svaerd.ghost-test-catcher";
 const COMMANDS = [
   "ghostTestCatcher.setup",
+  "ghostTestCatcher.openSetupGuide",
   "ghostTestCatcher.runDoctor",
   "ghostTestCatcher.analyzeCurrentTest",
   "ghostTestCatcher.openLastReport",

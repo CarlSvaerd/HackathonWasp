@@ -262,10 +262,12 @@ test("package manifest declares limited workspace trust and guarded execution", 
     true
   );
   assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.setup"));
+  assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.openSetupGuide"));
   assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.refreshTestExplorer"));
   assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.clearAnalysisCache"));
   assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.addGitHubActionsGate"));
   assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.setup"));
+  assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.openSetupGuide"));
   assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.refreshTestExplorer"));
   assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.addGitHubActionsGate"));
   assert.deepEqual(manifest.categories, ["Testing", "Linters"]);
@@ -290,6 +292,11 @@ test("package manifest declares limited workspace trust and guarded execution", 
     manifest.contributes.configuration.properties["ghostTestCatcher.ciFailOn"].default,
     "ghost_risk"
   );
+  assert.equal(
+    manifest.contributes.configuration.properties["ghostTestCatcher.setupNudgeEnabled"].default,
+    true
+  );
+  assert.ok(manifest.contributes.walkthroughs.some((walkthrough) => walkthrough.id === "ghostTestCatcher.gettingStarted"));
 });
 
 test("renderDoctorHtml escapes setup details and includes inferred source files", () => {

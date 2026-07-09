@@ -9,3 +9,4 @@ pnpm-workspace.yaml
 .npmrc
 *.vsix
 *.map
+*.log

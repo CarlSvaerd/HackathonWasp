@@ -19,6 +19,7 @@ async function main() {
 
   process.env.GHOST_TEST_CATCHER_TEST_PYTHON = pythonPath;
   process.env.GHOST_TEST_CATCHER_REPO_ROOT = repoRoot;
+  process.env.GHOST_TEST_CATCHER_DISABLE_SETUP_NUDGE = "1";
   process.env.PYTHONPATH = pythonPathEntries.join(path.delimiter);
 
   const vscodeVersion = process.env.VSCODE_TEST_VERSION || "stable";

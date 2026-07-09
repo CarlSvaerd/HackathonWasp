@@ -1,31 +1,69 @@
 # Ghost Test Catcher for VS Code
 
-Ghost Test Catcher checks whether Python test files are grounded in the source code they claim to test. It is designed for reviewing AI-generated tests before you keep, merge, or trust them.
+[![Unit Tests](https://github.com/CarlSvaerd/HackathonWasp/actions/workflows/test.yml/badge.svg)](https://github.com/CarlSvaerd/HackathonWasp/actions/workflows/test.yml)
 
-## Features
+Ghost Test Catcher helps you decide whether Python tests, especially AI-generated tests, are grounded in the source code they claim to verify.
 
-- Analyze the current Python test file from the command palette or editor title.
-- Run `Ghost Test Catcher: Setup` to detect Python, verify the CLI, choose local/static/Docker execution, and open Doctor.
-- Analyze changed Python test files in the current Git workspace.
-- Analyze selected files or folders from Explorer, including a test file plus specific source files as explicit context.
-- Automatically include local source files imported by the selected test file before broader configured source folders.
-- Run the Python Ghost Test Catcher CLI with JSON output.
-- Show per-test diagnostics directly on `def test_*` functions and `unittest.TestCase` methods.
-- Add CodeLens summaries above analyzed tests.
-- Open a report panel with reliability, ETV, framework, run status, risk categories, recommendations, evidence, and missing symbols.
-- Filter the report by verdict, framework, missing symbols, failed/risky tests, and evidence text.
-- Expand evidence details directly in the report table.
-- Populate VS Code's native Testing panel with discovered pytest-style functions and `unittest.TestCase` methods.
-- Run `Analyze with Ghost Test Catcher` directly from the Testing panel and show native pass/fail/skipped results for each test.
-- Restore valid previous reports from a workspace cache so diagnostics and CodeLens survive reloads.
-- Offer Quick Fixes to open evidence files, copy missing symbols, and rerun static-only analysis.
-- Generate a ready-to-use GitHub Actions gate with `Ghost Test Catcher: Add GitHub Actions Gate`.
-- Optionally execute tests through a Docker backend for teams that want container isolation.
-- Detect nested Python project roots when VS Code is opened at a parent folder.
-- Run a setup Doctor report that checks project root detection, Python importability, CLI config, discovered sources, and discovered tests.
-- Cancel long-running analysis and Doctor runs from the VS Code progress notification.
-- Write CLI stderr, process starts, and failure details to the `Ghost Test Catcher` output channel.
-- Respect VS Code Workspace Trust by falling back to static analysis in untrusted workspaces unless execution trust enforcement is disabled.
+It runs inside VS Code as a review tool for generated or suspicious tests: pick a test file, run analysis, and get per-test diagnostics, source evidence, missing symbols, execution status, and a verdict you can use before keeping, merging, or trusting the tests.
+
+## Why Install It
+
+- Catch tests that reference APIs, workflows, or product behavior that do not exist.
+- Separate grounded tests from borderline tests and high-risk ghost tests.
+- Review evidence directly in VS Code instead of reading raw JSON.
+- Use the Testing panel, diagnostics, CodeLens, Quick Fixes, reports, and CI gates together.
+- Keep execution cautious with confirmation prompts, Workspace Trust handling, static-only mode, and optional Docker isolation.
+
+## Screenshots
+
+### Filterable Report Panel
+
+![Ghost Test Catcher report panel](media/screenshot-report.png)
+
+### Inline Diagnostics And Quick Fixes
+
+![Ghost Test Catcher diagnostics](media/screenshot-diagnostics.png)
+
+### Native Testing Panel Integration
+
+![Ghost Test Catcher Testing panel](media/screenshot-testing.png)
+
+## Quick Start
+
+1. Install the Python package in the Python environment used by your workspace.
+
+   ```bash
+   pip install "ghost-test-catcher[ghost]"
+   ```
+
+2. Open a Python project in VS Code.
+3. Run `Ghost Test Catcher: Setup`.
+4. Choose local execution, static-only review, or Docker isolation.
+5. Open a Python test file and run `Ghost Test Catcher: Analyze Current Test File`.
+6. Review diagnostics, CodeLens verdicts, the report panel, and Testing panel results.
+
+The extension also contributes a VS Code walkthrough and shows a one-time setup prompt in workspaces that contain Python tests.
+
+## Core Features
+
+- **Guided setup:** detects Python, validates `ghost_test_catcher.cli`, writes workspace settings, and opens Doctor.
+- **Current-file review:** analyze the active Python test file from the command palette, editor title, or context menu.
+- **Changed-test review:** analyze changed Python test files in the current Git workspace.
+- **Selection review:** analyze selected test files or folders with explicitly selected source context.
+- **Smart source context:** automatically includes local source files imported by the selected test file before broader configured folders.
+- **Inline diagnostics:** marks pytest-style functions and `unittest.TestCase` methods with groundedness and execution findings.
+- **CodeLens summaries:** shows verdict, run status, and confidence above analyzed tests.
+- **Filterable report panel:** review reliability, ETV, framework, run status, risk categories, recommendations, source evidence, and missing symbols.
+- **Native Testing panel:** discovers Python tests and runs `Analyze with Ghost Test Catcher` as a VS Code test profile.
+- **Persistent cache:** restores valid diagnostics, CodeLens, and reports after reloads and avoids unnecessary reruns.
+- **Quick Fix actions:** open evidence files, copy missing symbols, and rerun static-only analysis.
+- **CI generator:** writes a ready-to-use GitHub Actions gate with `Ghost Test Catcher: Add GitHub Actions Gate`.
+- **Docker backend:** optionally execute tests through a configured Docker image with network disabled.
+- **Nested project detection:** finds Python project roots even when VS Code is opened at a parent folder.
+- **Doctor report:** checks project root detection, Python importability, CLI config, discovered sources, and discovered tests.
+- **Cancellable execution:** analysis and Doctor runs use VS Code progress cancellation plus process timeouts.
+- **Output channel:** records CLI starts, stderr, and failure details in `Ghost Test Catcher`.
+- **Workspace Trust support:** falls back to static analysis in untrusted workspaces unless execution trust enforcement is disabled.
 
 ## Requirements
 
@@ -51,6 +89,7 @@ For normal users, start with `Ghost Test Catcher: Setup`. Setup checks the confi
 - `Ghost Test Catcher: Analyze Current Test File`
 - `Ghost Test Catcher: Analyze Changed Test Files`
 - `Ghost Test Catcher: Analyze Selected Files or Folders`
+- `Ghost Test Catcher: Open Setup Guide`
 - `Ghost Test Catcher: Run Doctor`
 - `Ghost Test Catcher: Open Last Report`
 - `Ghost Test Catcher: Refresh Testing Panel`
@@ -60,6 +99,7 @@ For normal users, start with `Ghost Test Catcher: Setup`. Setup checks the confi
 ## Settings
 
 - `ghostTestCatcher.pythonPath`: Python executable. Defaults to `python`.
+- `ghostTestCatcher.setupNudgeEnabled`: show a one-time setup prompt in workspaces that contain Python tests. Defaults to `true`.
 - `ghostTestCatcher.sourcePaths`: source/context paths. Defaults to `["src"]`.
 - `ghostTestCatcher.smartSourceContext`: include local imports from the selected test file before configured source paths. Defaults to `true`.
 - `ghostTestCatcher.executeTests`: run selected Python tests in a temporary workspace. Defaults to `true`.
@@ -118,4 +158,4 @@ npm run package
 
 `npm run test:integration` uses `@vscode/test-electron` to download or reuse VS Code, open the fixture workspace in an Extension Development Host, run Doctor, analyze a Python test file, verify diagnostics, and refresh the Testing panel. Set `GHOST_TEST_CATCHER_TEST_PYTHON` when the desired Python executable is not simply `python`.
 
-The package command creates `ghost-test-catcher-0.1.0.vsix`, which can be installed in VS Code with `Extensions: Install from VSIX...`.
+The package command creates `ghost-test-catcher-0.2.0.vsix`, which can be installed in VS Code with `Extensions: Install from VSIX...`.

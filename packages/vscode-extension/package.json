@@ -2,7 +2,7 @@
   "name": "ghost-test-catcher",
   "displayName": "Ghost Test Catcher",
   "description": "Detect whether AI-generated Python tests are grounded in your actual source code.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "carl-svaerd",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -60,6 +60,7 @@
     "onCommand:ghostTestCatcher.analyzeChangedTests",
     "onCommand:ghostTestCatcher.analyzeSelectedFiles",
     "onCommand:ghostTestCatcher.setup",
+    "onCommand:ghostTestCatcher.openSetupGuide",
     "onCommand:ghostTestCatcher.runDoctor",
     "onCommand:ghostTestCatcher.openLastReport",
     "onCommand:ghostTestCatcher.refreshTestExplorer",
@@ -74,13 +75,56 @@
     "test:integration": "node test/integration/runTest.js",
     "test:integration:ci": "node test/integration/runCi.js",
     "test:all": "node --test test/*.test.js && node test/integration/runTest.js",
-    "package": "vsce package --no-dependencies --out ghost-test-catcher-0.1.0.vsix"
+    "package": "vsce package --no-dependencies --out ghost-test-catcher-0.2.0.vsix"
   },
   "devDependencies": {
     "@vscode/test-electron": "^2.4.1",
     "@vscode/vsce": "^3.6.0"
   },
   "contributes": {
+    "walkthroughs": [
+      {
+        "id": "ghostTestCatcher.gettingStarted",
+        "title": "Get Started with Ghost Test Catcher",
+        "description": "Verify AI-generated Python tests against real source evidence before you trust them.",
+        "steps": [
+          {
+            "id": "ghostTestCatcher.setup",
+            "title": "Set up Python and the CLI",
+            "description": "Choose local, static-only, or Docker-backed analysis, then let Doctor confirm the workspace is ready.",
+            "media": {
+              "markdown": "media/walkthrough-setup.md"
+            },
+            "completionEvents": [
+              "onCommand:ghostTestCatcher.setup"
+            ]
+          },
+          {
+            "id": "ghostTestCatcher.review",
+            "title": "Review a Python test file",
+            "description": "Analyze a selected test file and inspect diagnostics, CodeLens verdicts, and the report panel.",
+            "media": {
+              "markdown": "media/walkthrough-review.md"
+            },
+            "completionEvents": [
+              "onCommand:ghostTestCatcher.analyzeCurrentTest",
+              "onCommand:ghostTestCatcher.analyzeSelectedFiles"
+            ]
+          },
+          {
+            "id": "ghostTestCatcher.ci",
+            "title": "Add the CI gate",
+            "description": "Generate a GitHub Actions workflow so generated-test review can run in pull requests.",
+            "media": {
+              "markdown": "media/walkthrough-ci.md"
+            },
+            "completionEvents": [
+              "onCommand:ghostTestCatcher.addGitHubActionsGate"
+            ]
+          }
+        ]
+      }
+    ],
     "commands": [
       {
         "command": "ghostTestCatcher.analyzeCurrentTest",
@@ -97,6 +141,10 @@
       {
         "command": "ghostTestCatcher.setup",
         "title": "Ghost Test Catcher: Setup"
+      },
+      {
+        "command": "ghostTestCatcher.openSetupGuide",
+        "title": "Ghost Test Catcher: Open Setup Guide"
       },
       {
         "command": "ghostTestCatcher.runDoctor",
@@ -126,6 +174,11 @@
           "type": "string",
           "default": "python",
           "description": "Python executable used to run the Ghost Test Catcher CLI."
+        },
+        "ghostTestCatcher.setupNudgeEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a one-time setup prompt in workspaces that contain Python tests."
         },
         "ghostTestCatcher.sourcePaths": {
           "type": "array",

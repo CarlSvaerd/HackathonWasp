@@ -52,12 +52,12 @@ npm run test:integration
 npm run package
 ```
 
-On Linux CI, run `npm run test:integration` through `xvfb-run -a` because VS Code needs a display server in headless runners. The GitHub Actions matrix in `.github/workflows/test.yml` covers `ubuntu-latest`, `windows-latest`, and `macos-latest`.
+For local CI parity, run `npm run test:integration:ci`. The wrapper uses `xvfb-run -a` on Linux because VS Code needs a display server in headless runners, captures the integration log, and emits a concise GitHub annotation on failure. The GitHub Actions matrix in `.github/workflows/test.yml` covers `ubuntu-latest`, `windows-latest`, and `macos-15-intel`.
 
 ## VSIX Installation Smoke Test
 
 ```bash
-code --install-extension packages/vscode-extension/ghost-test-catcher-0.1.0.vsix --force
+code --install-extension packages/vscode-extension/ghost-test-catcher-0.2.0.vsix --force
 ```
 
 After installation, open a Python repository, open a test file, and run `Ghost Test Catcher: Setup` from the command palette. The setup flow should find the intended Python executable, write workspace settings for the selected execution profile, detect whether `ghost_test_catcher.cli` imports, and open Doctor. The Doctor report should show the resolved project root, configured Python path, successful `ghost_test_catcher.cli` import, source paths, and discovered tests. Then run `Ghost Test Catcher: Analyze Current Test File`. Also select a test file plus a source file in Explorer and run `Ghost Test Catcher: Analyze Selected Files or Folders`. The extension should show diagnostics on risky tests, CodeLens verdicts above tests, and a report panel through `Ghost Test Catcher: Open Last Report`.
@@ -88,9 +88,11 @@ The package is prepared for Marketplace packaging with:
 - `bugs`
 - `galleryBanner`
 - a PNG icon at `media/icon.png`
+- Marketplace README screenshots in `media/screenshot-report.png`, `media/screenshot-diagnostics.png`, and `media/screenshot-testing.png`
+- VS Code walkthrough Markdown in `media/walkthrough-setup.md`, `media/walkthrough-review.md`, and `media/walkthrough-ci.md`
 - a changelog at `CHANGELOG.md`
 
-The VS Code publishing documentation states that extension icons may not be SVG when publishing. Keep `media/icon.png` as the published icon and regenerate it with `python tools/generate_vscode_extension_icon.py` when the design changes.
+The VS Code publishing documentation states that extension icons may not be SVG when publishing. Keep `media/icon.png` as the published icon and regenerate it with `python tools/generate_vscode_extension_icon.py` when the design changes. Regenerate Marketplace screenshots with `python tools/generate_vscode_marketplace_assets.py` when the report, diagnostics, or Testing panel story changes.
 
 ## CI Gate Policy
 
@@ -99,7 +101,7 @@ Use `--fail-on ghost_risk` for the first rollout. It blocks only the highest-ris
 ## Release Sequence
 
 1. Run the local verification commands.
-2. Confirm `packages/vscode-extension/ghost-test-catcher-0.1.0.vsix` was rebuilt.
+2. Confirm `packages/vscode-extension/ghost-test-catcher-0.2.0.vsix` was rebuilt.
 3. Install the VSIX locally and run the extension against at least one grounded test and one intentionally ghost-risk test.
 4. Push the branch and confirm GitHub Actions produces Python, calibration, CI gate, and extension packaging results.
 5. Publish the VSIX manually from the Marketplace publisher management page or with `vsce publish` after publisher authentication is configured.

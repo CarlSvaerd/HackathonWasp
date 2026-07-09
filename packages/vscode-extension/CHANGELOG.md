@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0
+
+- Added Marketplace-ready README screenshots for the report panel, inline diagnostics, and native Testing panel integration.
+- Added a VS Code Getting Started walkthrough with setup, review, and CI-gate steps.
+- Added `Ghost Test Catcher: Open Setup Guide`.
+- Added a one-time setup prompt for workspaces that contain Python tests, controlled by `ghostTestCatcher.setupNudgeEnabled`.
+- Updated the extension package version and VSIX output filename to `0.2.0`.
+- Added a reproducible `tools/generate_vscode_marketplace_assets.py` script for regenerating README screenshots.
+- Kept CI integration stable across Windows, Ubuntu, and Intel macOS with the short VS Code test profile path and annotated integration failure logs.
+
 ## 0.1.0
 
 - Added `Ghost Test Catcher: Analyze Current Test File`.

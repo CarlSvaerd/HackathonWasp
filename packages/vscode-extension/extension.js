@@ -25,6 +25,7 @@ const SETUP_TIMEOUT_MS = 300000;
 const TEST_REFRESH_DELAY_MS = 250;
 const ANALYSIS_CACHE_STORAGE_KEY = "ghostTestCatcher.analysisCache.v1";
 const ANALYSIS_CACHE_MAX_ENTRIES = 100;
+const SETUP_NUDGE_STORAGE_KEY = "ghostTestCatcher.setupNudge.v1";
 
 function activate(context) {
   extensionContext = context;
@@ -42,6 +43,7 @@ function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.setup", setupGhostTestCatcher));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.runDoctor", runDoctor));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.openLastReport", openLastReport));
+  context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.openSetupGuide", openSetupGuide));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.refreshTestExplorer", refreshTestExplorer));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.clearAnalysisCache", clearAnalysisCache));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.addGitHubActionsGate", addGitHubActionsGate));
@@ -56,6 +58,7 @@ function activate(context) {
   ));
   setupTestController(context);
   restoreCachedReports().catch((error) => logOutput(`Failed to restore cached reports: ${error.message}`));
+  maybeShowSetupNudge(context).catch((error) => logOutput(`Setup nudge failed: ${error.message}`));
 }
 
 function deactivate() {
@@ -100,6 +103,56 @@ function setupTestController(context) {
 async function refreshTestExplorer() {
   await discoverWorkspaceTests();
   vscode.window.showInformationMessage("Ghost Test Catcher refreshed the Testing panel.");
+}
+
+async function openSetupGuide() {
+  await openExtensionReadme();
+}
+
+async function maybeShowSetupNudge(context) {
+  if (process.env.GHOST_TEST_CATCHER_DISABLE_SETUP_NUDGE === "1") {
+    return;
+  }
+  if (!vscode.workspace.workspaceFolders?.length) {
+    return;
+  }
+  if (!getConfig().get("setupNudgeEnabled", true)) {
+    return;
+  }
+  if (context.workspaceState.get(SETUP_NUDGE_STORAGE_KEY, false)) {
+    return;
+  }
+
+  const activeDocument = vscode.window.activeTextEditor?.document;
+  const activePythonTest = activeDocument?.languageId === "python" && core.isTestPath(activeDocument.uri.fsPath);
+  const hasPythonTests = activePythonTest || await workspaceHasPythonTests();
+  if (!hasPythonTests) {
+    return;
+  }
+
+  await context.workspaceState.update(SETUP_NUDGE_STORAGE_KEY, true);
+  const choice = await vscode.window.showInformationMessage(
+    "Ghost Test Catcher can verify Python tests against real source evidence before you trust them.",
+    "Set Up",
+    "Open Guide",
+    "Later"
+  );
+  if (choice === "Set Up") {
+    await vscode.commands.executeCommand("ghostTestCatcher.setup");
+  } else if (choice === "Open Guide") {
+    await openSetupGuide();
+  }
+}
+
+async function workspaceHasPythonTests() {
+  const excludes = "**/{.git,node_modules,.venv,venv,__pycache__,.tox,.nox,build,dist}/**";
+  for (const pattern of ["**/test_*.py", "**/*_test.py", "**/tests/**/*.py"]) {
+    const matches = await vscode.workspace.findFiles(pattern, excludes, 1);
+    if (matches.length) {
+      return true;
+    }
+  }
+  return false;
 }
 
 async function clearAnalysisCache() {
