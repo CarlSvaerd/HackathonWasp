@@ -1,5 +1,6 @@
 const childProcess = require("child_process");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { downloadAndUnzipVSCode, runTests } = require("@vscode/test-electron");
 
@@ -8,11 +9,8 @@ async function main() {
   const extensionTestsPath = path.resolve(__dirname, "suite", "index");
   const workspacePath = path.resolve(__dirname, "fixtures", "python-project");
   const repoRoot = path.resolve(extensionDevelopmentPath, "..", "..");
-  const userDataDir = path.join(
-    extensionDevelopmentPath,
-    ".vscode-test",
-    `user-data-${process.platform}-${process.arch}`
-  );
+  const userData = resolveUserDataDir(extensionDevelopmentPath);
+  const userDataDir = userData.path;
   const pythonPath = process.env.GHOST_TEST_CATCHER_TEST_PYTHON || "python";
   const pythonPathEntries = [path.join(repoRoot, "src")];
   if (process.env.PYTHONPATH) {
@@ -60,12 +58,41 @@ async function main() {
   console.log(`  vscodeExecutablePath=${vscodeExecutablePath}`);
   console.log(`  launchArgs=${launchArgs.join(" ")}`);
 
-  await runTests({
-    vscodeExecutablePath,
-    extensionDevelopmentPath,
-    extensionTestsPath,
-    launchArgs,
-  });
+  try {
+    await runTests({
+      vscodeExecutablePath,
+      extensionDevelopmentPath,
+      extensionTestsPath,
+      launchArgs,
+    });
+  } finally {
+    if (userData.cleanup) {
+      cleanupDirectory(userDataDir);
+    }
+  }
+}
+
+function resolveUserDataDir(extensionDevelopmentPath) {
+  if (process.platform === "win32") {
+    return {
+      path: path.join(extensionDevelopmentPath, ".vscode-test", `user-data-${process.platform}-${process.arch}`),
+      cleanup: false,
+    };
+  }
+
+  const tempRoot = fs.existsSync("/tmp") ? "/tmp" : os.tmpdir();
+  return {
+    path: path.join(tempRoot, `gtc-vscode-${process.platform}-${process.arch}-${process.pid}`),
+    cleanup: true,
+  };
+}
+
+function cleanupDirectory(directory) {
+  try {
+    fs.rmSync(directory, { recursive: true, force: true });
+  } catch (error) {
+    console.warn(`Ghost Test Catcher integration: could not remove temporary user data dir ${directory}: ${error.message}`);
+  }
 }
 
 function clearMacQuarantine(vscodeExecutablePath) {
