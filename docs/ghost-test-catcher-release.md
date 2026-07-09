@@ -9,6 +9,7 @@ This runbook turns the repository into a repeatable product release flow for the
 - `ghost-test-catcher ci` writes both JSON and Markdown reports.
 - `ghost-test-catcher calibrate` passes every built-in calibration case.
 - The VS Code extension passes syntax checks and unit tests.
+- The VS Code extension-host integration smoke suite passes through `@vscode/test-electron` on Windows, macOS, and Linux CI.
 - The VS Code extension packages into a `.vsix` that includes the icon, changelog, README, manifest, and extension code.
 - `Ghost Test Catcher: Setup` detects Python, validates `ghost_test_catcher.cli`, applies a local/static/Docker execution profile, verifies Docker when selected, and opens Doctor.
 - The VS Code extension can cancel analysis and Doctor runs without leaving a stuck progress notification.
@@ -46,9 +47,12 @@ python -m ghost_test_catcher.cli ci \
 cd packages/vscode-extension
 npm install --ignore-scripts
 npm run check
-npm test
+npm run test:unit
+npm run test:integration
 npm run package
 ```
+
+On Linux CI, run `npm run test:integration` through `xvfb-run -a` because VS Code needs a display server in headless runners. The GitHub Actions matrix in `.github/workflows/test.yml` covers `ubuntu-latest`, `windows-latest`, and `macos-latest`.
 
 ## VSIX Installation Smoke Test
 

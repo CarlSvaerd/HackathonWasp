@@ -408,9 +408,12 @@ Package the extension locally with:
 cd packages/vscode-extension
 npm install --ignore-scripts
 npm run check
-npm test
+npm run test:unit
+npm run test:integration
 npm run package
 ```
+
+`npm run test:integration` launches VS Code with `@vscode/test-electron`, opens the fixture Python workspace, activates the extension, runs Doctor, analyzes the active test file, checks Ghost Test Catcher diagnostics, and refreshes the Testing panel. Set `GHOST_TEST_CATCHER_TEST_PYTHON` if your desired Python executable is not named `python`.
 
 That produces `ghost-test-catcher-0.1.0.vsix`, installable through `Extensions: Install from VSIX...`.
 

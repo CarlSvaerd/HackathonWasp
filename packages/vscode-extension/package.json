@@ -70,9 +70,13 @@
   "scripts": {
     "check": "node --check extension.js && node --check extensionCore.js",
     "test": "node --test test/*.test.js",
+    "test:unit": "node --test test/*.test.js",
+    "test:integration": "node test/integration/runTest.js",
+    "test:all": "node --test test/*.test.js && node test/integration/runTest.js",
     "package": "vsce package --no-dependencies --out ghost-test-catcher-0.1.0.vsix"
   },
   "devDependencies": {
+    "@vscode/test-electron": "^2.4.1",
     "@vscode/vsce": "^3.6.0"
   },
   "contributes": {

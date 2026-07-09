@@ -4,6 +4,7 @@
 
 - Added `Ghost Test Catcher: Analyze Current Test File`.
 - Added `Ghost Test Catcher: Setup` for Python detection, CLI validation, install guidance, execution-mode setup, Docker verification, and Doctor launch.
+- Added `@vscode/test-electron` integration smoke coverage for activation, Doctor, current-file analysis, diagnostics, report opening, and Testing panel refresh.
 - Added `Ghost Test Catcher: Analyze Changed Test Files`.
 - Added `Ghost Test Catcher: Analyze Selected Files or Folders` for Explorer and editor selections.
 - Added `Ghost Test Catcher: Run Doctor` for project root, Python path, importability, and config diagnostics.

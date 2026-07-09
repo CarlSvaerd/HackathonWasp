@@ -125,8 +125,16 @@ Package the local extension:
    cd packages/vscode-extension
    npm install --ignore-scripts
    npm run check
-   npm test
+   npm run test:unit
+   npm run test:integration
    npm run package
+
+The integration test command uses ``@vscode/test-electron`` to launch an
+Extension Development Host with the fixture Python workspace. It activates the
+extension, runs Doctor, analyzes the active test file, verifies Ghost Test
+Catcher diagnostics, and refreshes the Testing panel. Set
+``GHOST_TEST_CATCHER_TEST_PYTHON`` when the desired Python executable is not
+named ``python``.
 
 Release Notes
 -------------

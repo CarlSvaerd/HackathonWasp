@@ -40,11 +40,11 @@ jobs:
         run: pytest --maxfail=1 --disable-warnings -q
 
       - name: Run Ghost Test Catcher calibration
-        run: python -m llmSHAP.ghost.cli calibrate --format pretty
+        run: python -m ghost_test_catcher.cli calibrate --format pretty
 
       - name: Smoke test Ghost Test Catcher CLI
         run: |
-          python -m llmSHAP.ghost.cli analyze \
+          python -m ghost_test_catcher.cli analyze \
             --repo . \
             --tests tests/test_webapp_execution.py \
             --source src \
@@ -53,7 +53,7 @@ jobs:
 
       - name: Run Ghost Test Catcher CI gate
         run: |
-          python -m llmSHAP.ghost.cli ci \
+          python -m ghost_test_catcher.cli ci \
             --repo . \
             --tests tests/test_webapp_execution.py \
             --source src \
@@ -96,7 +96,7 @@ jobs:
 
       - name: Run extension unit tests
         working-directory: packages/vscode-extension
-        run: npm test
+        run: npm run test:unit
 
       - name: Package extension
         working-directory: packages/vscode-extension
@@ -107,3 +107,50 @@ jobs:
         with:
           name: ghost-test-catcher-vsix
           path: packages/vscode-extension/ghost-test-catcher-0.1.0.vsix
+
+  vscode-extension-integration:
+    name: VS Code integration (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Ghost Test Catcher CLI
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[ghost]"
+
+      - name: Smoke test public CLI module
+        run: python -m ghost_test_catcher.cli doctor --repo .
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install extension dependencies
+        working-directory: packages/vscode-extension
+        run: npm install --ignore-scripts
+
+      - name: Run VS Code integration tests on Linux
+        if: runner.os == 'Linux'
+        working-directory: packages/vscode-extension
+        run: xvfb-run -a npm run test:integration
+        env:
+          GHOST_TEST_CATCHER_TEST_PYTHON: python
+
+      - name: Run VS Code integration tests
+        if: runner.os != 'Linux'
+        working-directory: packages/vscode-extension
+        run: npm run test:integration
+        env:
+          GHOST_TEST_CATCHER_TEST_PYTHON: python

@@ -111,8 +111,11 @@ docker build -t ghost-test-catcher-runner:latest docker/ghost-test-catcher-runne
 ```bash
 npm install --ignore-scripts
 npm run check
-npm test
+npm run test:unit
+npm run test:integration
 npm run package
 ```
+
+`npm run test:integration` uses `@vscode/test-electron` to download or reuse VS Code, open the fixture workspace in an Extension Development Host, run Doctor, analyze a Python test file, verify diagnostics, and refresh the Testing panel. Set `GHOST_TEST_CATCHER_TEST_PYTHON` when the desired Python executable is not simply `python`.
 
 The package command creates `ghost-test-catcher-0.1.0.vsix`, which can be installed in VS Code with `Extensions: Install from VSIX...`.
