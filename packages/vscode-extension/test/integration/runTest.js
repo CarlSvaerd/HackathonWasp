@@ -25,6 +25,7 @@ async function main() {
     workspacePath,
     "--disable-extensions",
     "--disable-workspace-trust",
+    "--disable-gpu",
     "--skip-welcome",
     "--skip-release-notes",
     "--user-data-dir",
@@ -33,6 +34,15 @@ async function main() {
   if (process.platform === "linux") {
     launchArgs.push("--no-sandbox");
   }
+
+  console.log("Ghost Test Catcher integration launcher");
+  console.log(`  extensionDevelopmentPath=${extensionDevelopmentPath}`);
+  console.log(`  extensionTestsPath=${extensionTestsPath}`);
+  console.log(`  workspacePath=${workspacePath}`);
+  console.log(`  repoRoot=${repoRoot}`);
+  console.log(`  pythonPath=${pythonPath}`);
+  console.log(`  PYTHONPATH=${process.env.PYTHONPATH}`);
+  console.log(`  launchArgs=${launchArgs.join(" ")}`);
 
   await runTests({
     extensionDevelopmentPath,

@@ -14,6 +14,8 @@ const COMMANDS = [
 ];
 
 async function run() {
+  console.log(`Ghost Test Catcher integration workspace=${workspaceRoot()}`);
+  console.log(`Ghost Test Catcher integration python=${process.env.GHOST_TEST_CATCHER_TEST_PYTHON || "python"}`);
   const tests = [
     ["activates and registers product commands", activatesAndRegistersCommands],
     ["runs Doctor against the fixture workspace", runsDoctor],
