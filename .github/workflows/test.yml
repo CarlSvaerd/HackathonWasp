@@ -157,12 +157,6 @@ jobs:
         working-directory: packages/vscode-extension
         run: npm install --ignore-scripts
 
-      - name: Run VS Code integration tests on Linux
-        if: runner.os == 'Linux'
-        working-directory: packages/vscode-extension
-        run: xvfb-run -a npm run test:integration
-
       - name: Run VS Code integration tests
-        if: runner.os != 'Linux'
         working-directory: packages/vscode-extension
-        run: npm run test:integration
+        run: npm run test:integration:ci
