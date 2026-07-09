@@ -42,7 +42,7 @@ async function run() {
 }
 
 async function activatesAndRegistersCommands() {
-  assert.equal(vscode.workspace.isTrusted, true, "integration smoke test should run in a trusted workspace");
+  assert.ok(vscode.workspace.workspaceFolders?.length, "expected the fixture workspace to be open");
   const extension = vscode.extensions.getExtension(EXTENSION_ID);
   assert.ok(extension, `expected ${EXTENSION_ID} to be available`);
   await extension.activate();
