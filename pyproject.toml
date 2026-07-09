@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["llmSHAP*"]
+include = ["llmSHAP*", "ghost_test_catcher*"]
 
 [project]
-name = "llmSHAP"
-version = "1.5.2"
+name = "ghost-test-catcher"
+version = "0.1.0"
 description = "LLM attribution plus Ghost Test Catcher, a trust checker for AI-generated Python tests."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -41,7 +41,7 @@ dev        = ["pytest", "matplotlib", "ipywidgets", "sphinx", "myst-parser", "sp
 all        = ["openai", "python-dotenv", "numpy", "scikit-learn", "fastapi", "uvicorn", "python-multipart", "pytest"]
 
 [project.scripts]
-ghost-test-catcher = "llmSHAP.ghost.cli:main"
+ghost-test-catcher = "ghost_test_catcher.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/CarlSvaerd/HackathonWasp"

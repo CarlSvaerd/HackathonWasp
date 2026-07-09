@@ -10,8 +10,9 @@ This runbook turns the repository into a repeatable product release flow for the
 - `ghost-test-catcher calibrate` passes every built-in calibration case.
 - The VS Code extension passes syntax checks and unit tests.
 - The VS Code extension packages into a `.vsix` that includes the icon, changelog, README, manifest, and extension code.
+- `Ghost Test Catcher: Setup` detects Python, validates `ghost_test_catcher.cli`, applies a local/static/Docker execution profile, verifies Docker when selected, and opens Doctor.
 - The VS Code extension can cancel analysis and Doctor runs without leaving a stuck progress notification.
-- The VS Code extension blocks test execution in untrusted workspaces when `ghostTestCatcher.requireWorkspaceTrustForExecution` is enabled and offers static analysis instead.
+- The VS Code extension blocks test execution in untrusted workspaces when `ghostTestCatcher.requireWorkspaceTrustForExecution` is enabled, restricts executable settings, and offers static analysis instead.
 - The VS Code Testing panel shows discovered Python tests and the `Analyze with Ghost Test Catcher` run profile marks grounded, risky, and skipped tests correctly.
 - Valid cached reports restore diagnostics and CodeLens after a VS Code reload, then invalidate when relevant Python files change.
 - The report panel filters by verdict, framework, missing symbols, failed/risky tests, and evidence text.
@@ -23,16 +24,17 @@ This runbook turns the repository into a repeatable product release flow for the
 
 ```bash
 python -m pytest
-python -m llmSHAP.ghost.cli calibrate --format pretty
+python -m ghost_test_catcher.cli calibrate --format pretty
+python -m ghost_test_catcher.cli doctor --repo .
 docker build -t ghost-test-catcher-runner:latest docker/ghost-test-catcher-runner
-python -m llmSHAP.ghost.cli analyze \
+python -m ghost_test_catcher.cli analyze \
   --repo . \
   --tests tests/test_webapp_execution.py \
   --source src \
   --execution-backend docker \
   --docker-image ghost-test-catcher-runner:latest \
   --format json
-python -m llmSHAP.ghost.cli ci \
+python -m ghost_test_catcher.cli ci \
   --repo . \
   --tests tests/test_webapp_execution.py \
   --source src \
@@ -54,7 +56,7 @@ npm run package
 code --install-extension packages/vscode-extension/ghost-test-catcher-0.1.0.vsix --force
 ```
 
-After installation, open a Python repository, open a test file, and run `Ghost Test Catcher: Run Doctor` from the command palette. The Doctor report should show the resolved project root, configured Python path, successful `llmSHAP.ghost.cli` import, source paths, and discovered tests. Then run `Ghost Test Catcher: Analyze Current Test File`. Also select a test file plus a source file in Explorer and run `Ghost Test Catcher: Analyze Selected Files or Folders`. The extension should show diagnostics on risky tests, CodeLens verdicts above tests, and a report panel through `Ghost Test Catcher: Open Last Report`.
+After installation, open a Python repository, open a test file, and run `Ghost Test Catcher: Setup` from the command palette. The setup flow should find the intended Python executable, write workspace settings for the selected execution profile, detect whether `ghost_test_catcher.cli` imports, and open Doctor. The Doctor report should show the resolved project root, configured Python path, successful `ghost_test_catcher.cli` import, source paths, and discovered tests. Then run `Ghost Test Catcher: Analyze Current Test File`. Also select a test file plus a source file in Explorer and run `Ghost Test Catcher: Analyze Selected Files or Folders`. The extension should show diagnostics on risky tests, CodeLens verdicts above tests, and a report panel through `Ghost Test Catcher: Open Last Report`.
 
 Open the VS Code Testing view and run `Ghost Test Catcher: Refresh Testing Panel`. The tree should show Python test files with child items for pytest-style functions and `unittest.TestCase` methods. Run the `Analyze with Ghost Test Catcher` profile from the Testing panel. Grounded executed tests should appear passed, unsupported or borderline tests should appear failed with a Ghost Test Catcher message, and grounded tests should appear skipped when execution is disabled.
 
@@ -66,7 +68,7 @@ Reload VS Code after a completed analysis and confirm cached diagnostics and Cod
 
 Open `View: Toggle Output`, choose the `Ghost Test Catcher` output channel, and confirm process starts, stderr, and failure details are written there. Start a long analysis or Doctor run and click Cancel in the VS Code progress notification; the notification should close cleanly and the output channel should not keep receiving new process output.
 
-For Workspace Trust smoke testing, open the same repository as an untrusted workspace, keep `ghostTestCatcher.requireWorkspaceTrustForExecution` set to `true`, and run `Ghost Test Catcher: Analyze Current Test File`. The extension should warn that test execution is blocked and offer `Run Static Analysis`. Choosing that option should produce a report without executing tests.
+For Workspace Trust smoke testing, open the same repository as an untrusted workspace, keep `ghostTestCatcher.requireWorkspaceTrustForExecution` set to `true`, and run `Ghost Test Catcher: Analyze Current Test File`. The extension should warn that test execution is blocked and offer `Run Static Analysis`. Choosing that option should produce a report without executing tests when the CLI is installed in the configured Python environment. The output channel should show that workspace paths were not prepended to `PYTHONPATH` for the CLI process.
 
 ## Marketplace Publishing Notes
 

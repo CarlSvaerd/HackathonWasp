@@ -7,6 +7,8 @@
   "license": "MIT",
   "icon": "media/icon.png",
   "preview": true,
+  "pricing": "Free",
+  "qna": "marketplace",
   "repository": {
     "type": "git",
     "url": "https://github.com/CarlSvaerd/HackathonWasp"
@@ -24,8 +26,7 @@
   },
   "categories": [
     "Testing",
-    "Linters",
-    "Other"
+    "Linters"
   ],
   "keywords": [
     "pytest",
@@ -44,9 +45,12 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "Ghost Test Catcher can run Doctor and static analysis in untrusted workspaces. Test execution is blocked unless the workspace is trusted or ghostTestCatcher.requireWorkspaceTrustForExecution is disabled.",
+      "description": "Ghost Test Catcher can run Doctor and static analysis in untrusted workspaces from an installed CLI. Test execution and executable settings are restricted unless the workspace is trusted.",
       "restrictedConfigurations": [
-        "ghostTestCatcher.executeTests"
+        "ghostTestCatcher.executeTests",
+        "ghostTestCatcher.pythonPath",
+        "ghostTestCatcher.executionBackend",
+        "ghostTestCatcher.dockerImage"
       ]
     }
   },
@@ -55,6 +59,7 @@
     "onCommand:ghostTestCatcher.analyzeCurrentTest",
     "onCommand:ghostTestCatcher.analyzeChangedTests",
     "onCommand:ghostTestCatcher.analyzeSelectedFiles",
+    "onCommand:ghostTestCatcher.setup",
     "onCommand:ghostTestCatcher.runDoctor",
     "onCommand:ghostTestCatcher.openLastReport",
     "onCommand:ghostTestCatcher.refreshTestExplorer",
@@ -83,6 +88,10 @@
       {
         "command": "ghostTestCatcher.analyzeSelectedFiles",
         "title": "Ghost Test Catcher: Analyze Selected Files or Folders"
+      },
+      {
+        "command": "ghostTestCatcher.setup",
+        "title": "Ghost Test Catcher: Setup"
       },
       {
         "command": "ghostTestCatcher.runDoctor",

@@ -24,7 +24,7 @@ test("buildAnalyzeArgs creates the CLI contract used by the extension", () => {
 
   assert.deepEqual(args.slice(0, 8), [
     "-m",
-    "llmSHAP.ghost.cli",
+    "ghost_test_catcher.cli",
     "analyze",
     "--repo",
     root,
@@ -61,6 +61,32 @@ test("analysisCacheKey is stable for the same analysis inputs and changes for me
   assert.notEqual(core.analysisCacheKey(base), core.analysisCacheKey({ ...base, sourcePaths: ["src"] }));
   assert.notEqual(core.analysisCacheKey(base), core.analysisCacheKey({ ...base, testMode: "unit" }));
   assert.notEqual(core.analysisCacheKey(base), core.analysisCacheKey({ ...base, executionBackend: "docker" }));
+});
+
+test("setup helpers produce safe defaults for first-run onboarding", () => {
+  assert.deepEqual(core.defaultPythonCandidates("C:/Python311/python.exe"), [
+    "C:/Python311/python.exe",
+    "python",
+    "python3",
+  ]);
+  assert.deepEqual(core.defaultPythonCandidates("python"), ["python", "python3"]);
+  assert.deepEqual(core.setupProfileSettings("local"), {
+    executeTests: true,
+    executionBackend: "local",
+    confirmExecution: true,
+  });
+  assert.deepEqual(core.setupProfileSettings("static"), {
+    executeTests: false,
+    executionBackend: "local",
+    confirmExecution: true,
+  });
+  assert.deepEqual(core.setupProfileSettings("docker"), {
+    executeTests: true,
+    executionBackend: "docker",
+    confirmExecution: true,
+  });
+  assert.deepEqual(core.editableInstallArgs(), ["-m", "pip", "install", "-e", ".[ghost]"]);
+  assert.deepEqual(core.pypiInstallArgs(), ["-m", "pip", "install", "ghost-test-catcher[ghost]"]);
 });
 
 test("reportTestNames safely reads generated test names", () => {
@@ -228,15 +254,22 @@ test("nativeTestMessage includes actionable per-test review details", () => {
 test("package manifest declares limited workspace trust and guarded execution", () => {
   assert.equal(manifest.capabilities.untrustedWorkspaces.supported, "limited");
   assert.ok(manifest.capabilities.untrustedWorkspaces.restrictedConfigurations.includes("ghostTestCatcher.executeTests"));
+  assert.ok(manifest.capabilities.untrustedWorkspaces.restrictedConfigurations.includes("ghostTestCatcher.pythonPath"));
+  assert.ok(manifest.capabilities.untrustedWorkspaces.restrictedConfigurations.includes("ghostTestCatcher.executionBackend"));
+  assert.ok(manifest.capabilities.untrustedWorkspaces.restrictedConfigurations.includes("ghostTestCatcher.dockerImage"));
   assert.equal(
     manifest.contributes.configuration.properties["ghostTestCatcher.requireWorkspaceTrustForExecution"].default,
     true
   );
+  assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.setup"));
   assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.refreshTestExplorer"));
   assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.clearAnalysisCache"));
   assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.addGitHubActionsGate"));
+  assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.setup"));
   assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.refreshTestExplorer"));
   assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.addGitHubActionsGate"));
+  assert.deepEqual(manifest.categories, ["Testing", "Linters"]);
+  assert.equal(manifest.pricing, "Free");
   assert.equal(
     manifest.contributes.configuration.properties["ghostTestCatcher.testDiscoveryLimit"].default,
     500
@@ -357,7 +390,8 @@ test("renderGitHubActionsWorkflow creates a deployable CI gate", () => {
   assert.ok(workflow.includes("name: Ghost Test Catcher"));
   assert.ok(workflow.includes("actions/checkout@v4"));
   assert.ok(workflow.includes("python-version: \"3.12\""));
-  assert.ok(workflow.includes("python -m llmSHAP.ghost.cli ci"));
+  assert.ok(workflow.includes("python -m pip install \"ghost-test-catcher[ghost]\""));
+  assert.ok(workflow.includes("ghost-test-catcher ci"));
   assert.ok(workflow.includes("--source src lib"));
   assert.ok(workflow.includes("--tests tests"));
   assert.ok(workflow.includes("--fail-on needs_review"));

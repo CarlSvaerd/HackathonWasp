@@ -2,12 +2,15 @@ const path = require("path");
 const crypto = require("crypto");
 const fs = require("fs");
 const WEBVIEW_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;";
+const GHOST_CLI_MODULE = "ghost_test_catcher.cli";
+const GHOST_CLI_COMMAND = "ghost-test-catcher";
+const PYPI_PACKAGE_SPEC = "ghost-test-catcher[ghost]";
 
 function buildAnalyzeArgs({ root, testFile, sourcePaths, testMode, maxFiles, executeTests, executionBackend, dockerImage }) {
   const relativeTestFile = toPosixPath(path.relative(root, testFile));
   const args = [
     "-m",
-    "llmSHAP.ghost.cli",
+    GHOST_CLI_MODULE,
     "analyze",
     "--repo",
     root,
@@ -92,12 +95,12 @@ jobs:
           python-version: "${pythonVersion}"
           cache: pip
 
-      - name: Install package
-        run: python -m pip install -e ".[ghost]"
+      - name: Install Ghost Test Catcher
+        run: python -m pip install "${PYPI_PACKAGE_SPEC}"
 
       - name: Run Ghost Test Catcher CI gate
         run: |
-          python -m llmSHAP.ghost.cli ci \\
+          ${GHOST_CLI_COMMAND} ci \\
             --repo . \\
             ${testArgs} \\
             ${sourceArgs} \\
@@ -138,6 +141,50 @@ function shellArg(value) {
     return value;
   }
   return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function defaultPythonCandidates(configuredPythonPath) {
+  const seen = new Set();
+  const candidates = [];
+  for (const value of [configuredPythonPath, "python", "python3"]) {
+    const candidate = String(value || "").trim();
+    if (!candidate || seen.has(candidate)) {
+      continue;
+    }
+    seen.add(candidate);
+    candidates.push(candidate);
+  }
+  return candidates;
+}
+
+function setupProfileSettings(profileId) {
+  if (profileId === "static") {
+    return {
+      executeTests: false,
+      executionBackend: "local",
+      confirmExecution: true,
+    };
+  }
+  if (profileId === "docker") {
+    return {
+      executeTests: true,
+      executionBackend: "docker",
+      confirmExecution: true,
+    };
+  }
+  return {
+    executeTests: true,
+    executionBackend: "local",
+    confirmExecution: true,
+  };
+}
+
+function editableInstallArgs() {
+  return ["-m", "pip", "install", "-e", ".[ghost]"];
+}
+
+function pypiInstallArgs(packageSpec = PYPI_PACKAGE_SPEC) {
+  return ["-m", "pip", "install", packageSpec];
 }
 
 function parseTestFunctionLocations(text) {
@@ -746,8 +793,12 @@ function escapeHtml(value) {
 }
 
 module.exports = {
+  GHOST_CLI_COMMAND,
+  GHOST_CLI_MODULE,
   analysisCacheKey,
   buildAnalyzeArgs,
+  defaultPythonCandidates,
+  editableInstallArgs,
   escapeHtml,
   extractPythonImportModules,
   findProjectRootForFile,
@@ -761,6 +812,7 @@ module.exports = {
   normalizePath,
   parseTestFunctionLocations,
   percent,
+  pypiInstallArgs,
   reportTestNames,
   renderGitHubActionsWorkflow,
   renderReportHtml,
@@ -768,6 +820,7 @@ module.exports = {
   relativePathFromRoot,
   resolveImportModulesToSourcePaths,
   summarizeReports,
+  setupProfileSettings,
   supportLabel,
   toRelativeSourcePaths,
   toPosixPath,

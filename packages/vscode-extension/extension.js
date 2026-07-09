@@ -21,6 +21,7 @@ const analysisCache = new Map();
 const quickFixContextByDiagnosticKey = new Map();
 const ANALYSIS_TIMEOUT_MS = 120000;
 const DOCTOR_TIMEOUT_MS = 30000;
+const SETUP_TIMEOUT_MS = 300000;
 const TEST_REFRESH_DELAY_MS = 250;
 const ANALYSIS_CACHE_STORAGE_KEY = "ghostTestCatcher.analysisCache.v1";
 const ANALYSIS_CACHE_MAX_ENTRIES = 100;
@@ -38,6 +39,7 @@ function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.analyzeCurrentTest", analyzeCurrentTest));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.analyzeChangedTests", analyzeChangedTests));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.analyzeSelectedFiles", analyzeSelectedFiles));
+  context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.setup", setupGhostTestCatcher));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.runDoctor", runDoctor));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.openLastReport", openLastReport));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.refreshTestExplorer", refreshTestExplorer));
@@ -1024,6 +1026,310 @@ function testCaseItemId(testFile, qualifiedName) {
   return `${testFileItemId(testFile)}:${qualifiedName}`;
 }
 
+async function setupGhostTestCatcher(uri) {
+  const targetUri = uri?.scheme === "file"
+    ? uri
+    : vscode.window.activeTextEditor?.document.uri;
+  const folder = targetUri
+    ? vscode.workspace.getWorkspaceFolder(targetUri)
+    : getActiveWorkspaceFolder();
+  if (!folder) {
+    vscode.window.showWarningMessage("Open a workspace before running Ghost Test Catcher setup.");
+    return;
+  }
+
+  const targetPath = targetUri?.scheme === "file" ? targetUri.fsPath : folder.uri.fsPath;
+  const root = core.findProjectRootForFile(targetPath, folder.uri.fsPath);
+  const profile = await vscode.window.showQuickPick(
+    [
+      {
+        id: "local",
+        label: "Recommended: local execution with confirmation",
+        description: "Analyze tests and ask before executing Python test code.",
+      },
+      {
+        id: "static",
+        label: "Static analysis only",
+        description: "Never execute tests from VS Code; safest first-run mode.",
+      },
+      {
+        id: "docker",
+        label: "Docker isolation",
+        description: "Execute tests inside the configured Docker image.",
+      },
+    ],
+    {
+      ignoreFocusOut: true,
+      placeHolder: "Choose how Ghost Test Catcher should run in this workspace.",
+    }
+  );
+  if (!profile) {
+    return;
+  }
+  let profileId = profile.id;
+  if (!vscode.workspace.isTrusted && profileId !== "static") {
+    vscode.window.showWarningMessage(
+      "This workspace is untrusted, so Ghost Test Catcher setup will use static analysis only until the workspace is trusted."
+    );
+    profileId = "static";
+  }
+
+  const config = getConfig();
+  const candidates = core.defaultPythonCandidates(config.get("pythonPath", "python"));
+  const setupState = await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: "Setting up Ghost Test Catcher",
+      cancellable: true,
+    },
+    async (progress, token) => {
+      progress.report({ message: "Finding Python" });
+      const python = await findPythonForSetup(root, candidates, token);
+      if (!python) {
+        return {
+          root,
+          profileId,
+          python: null,
+          cli: { ok: false, message: `No usable Python executable found. Tried: ${candidates.join(", ")}` },
+        };
+      }
+
+      throwIfCancellationRequested(token, "Ghost Test Catcher setup was cancelled.");
+      progress.report({ message: "Checking Ghost Test Catcher CLI" });
+      const cli = await checkGhostCliImport(root, python.command, token);
+      return {
+        root,
+        profileId,
+        python,
+        cli,
+      };
+    }
+  );
+
+  if (!setupState?.python) {
+    vscode.window.showErrorMessage(setupState?.cli?.message || "Ghost Test Catcher setup could not find Python.");
+    return;
+  }
+
+  await applySetupSettings(setupState.python.command, setupState.profileId);
+
+  let cliReady = setupState.cli.ok;
+  if (!cliReady) {
+    cliReady = await offerCliInstall(setupState.root, setupState.python.command, setupState.cli.message);
+  }
+
+  if (setupState.profileId === "docker") {
+    await verifyDockerSetup(getConfig().get("dockerImage", "ghost-test-catcher-runner:latest"));
+  }
+
+  if (!cliReady) {
+    vscode.window.showWarningMessage(
+      "Ghost Test Catcher setup saved your workspace settings, but the Python CLI is still not importable. Run Doctor after installing the package."
+    );
+    await runDoctor(vscode.Uri.file(setupState.root));
+    return;
+  }
+
+  vscode.window.showInformationMessage(
+    `Ghost Test Catcher is ready with ${setupState.python.executable || setupState.python.command}.`
+  );
+  await runDoctor(vscode.Uri.file(setupState.root));
+}
+
+async function findPythonForSetup(root, candidates, token) {
+  for (const command of candidates) {
+    try {
+      throwIfCancellationRequested(token, "Ghost Test Catcher setup was cancelled.");
+      const result = await execFile(
+        command,
+        ["-c", "import sys; print(sys.executable); print(sys.version.split()[0])"],
+        {
+          cwd: root,
+          env: buildPythonEnv(root),
+          maxBuffer: 1024 * 1024,
+          timeout: DOCTOR_TIMEOUT_MS,
+          token,
+          label: `setup python check (${command})`,
+        }
+      );
+      const lines = result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      return {
+        command,
+        executable: lines[0] || command,
+        version: lines[1] || "unknown",
+      };
+    } catch (error) {
+      if (isCancellationError(error)) {
+        throw error;
+      }
+      logOutput(`Setup skipped Python candidate ${command}: ${error.message}`);
+    }
+  }
+  return null;
+}
+
+async function checkGhostCliImport(root, pythonPath, token) {
+  try {
+    const result = await execFile(
+      pythonPath,
+      ["-c", `import ${core.GHOST_CLI_MODULE} as cli; print(cli.__file__)`],
+      {
+        cwd: root,
+        env: buildPythonEnv(root),
+        maxBuffer: 1024 * 1024,
+        timeout: DOCTOR_TIMEOUT_MS,
+        token,
+        label: "setup CLI import check",
+      }
+    );
+    return {
+      ok: true,
+      module: core.GHOST_CLI_MODULE,
+      path: result.stdout.trim(),
+      message: `Loaded ${core.GHOST_CLI_MODULE} from ${result.stdout.trim()}.`,
+    };
+  } catch (error) {
+    if (isCancellationError(error)) {
+      throw error;
+    }
+    return {
+      ok: false,
+      module: core.GHOST_CLI_MODULE,
+      message: `Could not import ${core.GHOST_CLI_MODULE}. ${error.message}`,
+    };
+  }
+}
+
+async function applySetupSettings(pythonPath, profileId) {
+  const profileSettings = core.setupProfileSettings(profileId);
+  const config = getConfig();
+  await config.update("pythonPath", pythonPath, vscode.ConfigurationTarget.Workspace);
+  await config.update("executeTests", profileSettings.executeTests, vscode.ConfigurationTarget.Workspace);
+  await config.update("executionBackend", profileSettings.executionBackend, vscode.ConfigurationTarget.Workspace);
+  await config.update("confirmExecution", profileSettings.confirmExecution, vscode.ConfigurationTarget.Workspace);
+}
+
+async function offerCliInstall(root, pythonPath, importMessage) {
+  const hasLocalProject = fs.existsSync(path.join(root, "pyproject.toml"));
+  const installArgs = hasLocalProject ? core.editableInstallArgs() : core.pypiInstallArgs();
+  const installCommand = `${quoteForLog(pythonPath)} ${installArgs.map(quoteForLog).join(" ")}`;
+  const choice = await vscode.window.showWarningMessage(
+    `${importMessage} Install Ghost Test Catcher for this Python environment?`,
+    { modal: false },
+    "Install CLI",
+    "Copy Install Command",
+    "Open Setup Docs",
+    "Cancel"
+  );
+
+  if (choice === "Copy Install Command") {
+    await vscode.env.clipboard.writeText(installCommand);
+    vscode.window.showInformationMessage("Copied the Ghost Test Catcher install command.");
+    return false;
+  }
+
+  if (choice === "Open Setup Docs") {
+    await openExtensionReadme();
+    return false;
+  }
+
+  if (choice !== "Install CLI") {
+    return false;
+  }
+
+  if (!vscode.workspace.isTrusted) {
+    vscode.window.showWarningMessage("Ghost Test Catcher will not install Python packages from an untrusted workspace.");
+    return false;
+  }
+
+  try {
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: "Installing Ghost Test Catcher CLI",
+        cancellable: true,
+      },
+      async (progress, token) => {
+        progress.report({ message: installCommand });
+        await execFile(pythonPath, installArgs, {
+          cwd: root,
+          env: process.env,
+          maxBuffer: 20 * 1024 * 1024,
+          timeout: SETUP_TIMEOUT_MS,
+          token,
+          label: "setup CLI install",
+        });
+      }
+    );
+  } catch (error) {
+    if (isCancellationError(error)) {
+      vscode.window.showInformationMessage("Ghost Test Catcher CLI install cancelled.");
+      return false;
+    }
+    logOutput(`Setup CLI install failed: ${error.message}`);
+    vscode.window.showErrorMessage(`Ghost Test Catcher CLI install failed: ${error.message}`);
+    return false;
+  }
+
+  const postInstall = await checkGhostCliImport(root, pythonPath);
+  if (!postInstall.ok) {
+    vscode.window.showWarningMessage(`Ghost Test Catcher install finished, but the CLI still did not import. ${postInstall.message}`);
+    return false;
+  }
+  return true;
+}
+
+async function verifyDockerSetup(dockerImage) {
+  try {
+    await execFile("docker", ["version", "--format", "{{.Server.Version}}"], {
+      maxBuffer: 1024 * 1024,
+      timeout: DOCTOR_TIMEOUT_MS,
+      label: "setup Docker engine check",
+    });
+  } catch (error) {
+    vscode.window.showWarningMessage(`Docker execution is selected, but Docker is not available yet. ${error.message}`);
+    return false;
+  }
+
+  try {
+    await execFile("docker", ["image", "inspect", dockerImage], {
+      maxBuffer: 1024 * 1024,
+      timeout: DOCTOR_TIMEOUT_MS,
+      label: "setup Docker image check",
+    });
+    return true;
+  } catch (error) {
+    const command = `docker build -t ${quoteForLog(dockerImage)} docker/ghost-test-catcher-runner`;
+    const choice = await vscode.window.showWarningMessage(
+      `Docker is available, but image ${dockerImage} was not found. Build it before running tests with Docker.`,
+      { modal: false },
+      "Copy Build Command",
+      "Continue"
+    );
+    if (choice === "Copy Build Command") {
+      await vscode.env.clipboard.writeText(command);
+      vscode.window.showInformationMessage("Copied the Ghost Test Catcher Docker build command.");
+    }
+    logOutput(`Docker image check failed for ${dockerImage}: ${error.message}`);
+    return false;
+  }
+}
+
+async function openExtensionReadme() {
+  const readmeCandidates = [
+    extensionContext?.asAbsolutePath("README.md"),
+    extensionContext?.asAbsolutePath("readme.md"),
+  ].filter(Boolean);
+  for (const readmePath of readmeCandidates) {
+    if (fs.existsSync(readmePath)) {
+      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(readmePath));
+      await vscode.window.showTextDocument(document, vscode.ViewColumn.Beside);
+      return;
+    }
+  }
+  vscode.window.showInformationMessage("Open the Ghost Test Catcher extension README from the Extensions view for setup instructions.");
+}
+
 async function runDoctor(uri) {
   const targetUri = uri?.scheme === "file"
     ? uri
@@ -1067,7 +1373,7 @@ async function runDoctor(uri) {
         progress.report({ message: "Checking Python module import" });
         const importCheck = await execFile(
           pythonPath,
-          ["-c", "import llmSHAP.ghost.cli as cli; print(cli.__file__)"],
+          ["-c", `import ${core.GHOST_CLI_MODULE} as cli; print(cli.__file__)`],
           {
             cwd: root,
             env,
@@ -1078,14 +1384,14 @@ async function runDoctor(uri) {
           }
         );
         report.importOk = true;
-        report.importMessage = `Loaded llmSHAP.ghost.cli from ${importCheck.stdout.trim()}.`;
+        report.importMessage = `Loaded ${core.GHOST_CLI_MODULE} from ${importCheck.stdout.trim()}.`;
       } catch (error) {
         if (isCancellationError(error)) {
           vscode.window.showInformationMessage("Ghost Test Catcher Doctor cancelled.");
           return;
         }
         report.importOk = false;
-        report.importMessage = `Could not import llmSHAP.ghost.cli with the configured Python path. ${error.message}`;
+        report.importMessage = `Could not import ${core.GHOST_CLI_MODULE} with the configured Python path. ${error.message}`;
       }
 
       try {
@@ -1096,7 +1402,7 @@ async function runDoctor(uri) {
         progress.report({ message: "Inspecting CLI configuration" });
         const doctorResult = await execFile(
           pythonPath,
-          ["-m", "llmSHAP.ghost.cli", "doctor", "--repo", root],
+          ["-m", core.GHOST_CLI_MODULE, "doctor", "--repo", root],
           {
             cwd: root,
             env,
@@ -1343,14 +1649,21 @@ function gitChangedFiles(root) {
     .catch(() => []);
 }
 
-function buildPythonEnv(root) {
+function buildPythonEnv(root, options = {}) {
   const env = { ...process.env };
-  const srcPath = path.join(root, "src");
-  const entries = [srcPath, root];
+  const includeWorkspacePaths = typeof options.includeWorkspacePaths === "boolean"
+    ? options.includeWorkspacePaths
+    : vscode.workspace.isTrusted;
+  const entries = [];
+  if (includeWorkspacePaths) {
+    entries.push(path.join(root, "src"), root);
+  }
   if (env.PYTHONPATH) {
     entries.push(env.PYTHONPATH);
   }
-  env.PYTHONPATH = entries.join(path.delimiter);
+  if (entries.length) {
+    env.PYTHONPATH = entries.join(path.delimiter);
+  }
   return env;
 }
 

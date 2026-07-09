@@ -91,6 +91,7 @@ VS Code
 
 The extension provides:
 
+* ``Ghost Test Catcher: Setup``
 * ``Ghost Test Catcher: Analyze Current Test File``
 * ``Ghost Test Catcher: Analyze Changed Test Files``
 * ``Ghost Test Catcher: Analyze Selected Files or Folders``
@@ -110,6 +111,12 @@ The extension provides:
 * cancellable analysis and Doctor runs with timeout-backed Python process termination
 * a ``Ghost Test Catcher`` output channel for CLI stderr and failure details
 * limited VS Code Workspace Trust support that offers static analysis instead of test execution in untrusted workspaces
+
+Run ``Ghost Test Catcher: Setup`` first in a new workspace. Setup detects the
+configured Python executable, validates the public ``ghost_test_catcher.cli``
+module, offers an install path when the CLI is missing, writes workspace
+settings for local/static/Docker execution, verifies Docker when selected, and
+opens Doctor.
 
 Package the local extension:
 
@@ -168,7 +175,12 @@ code. Keep confirmation enabled for untrusted generated tests.
 The VS Code extension declares limited untrusted-workspace support. When
 ``ghostTestCatcher.requireWorkspaceTrustForExecution`` is enabled, test
 execution is blocked in untrusted workspaces and the extension offers static
-grounding analysis instead. Report webviews disable scripts, deny local
+grounding analysis instead. The extension also restricts executable workspace
+settings in untrusted workspaces: ``ghostTestCatcher.pythonPath``,
+``ghostTestCatcher.executionBackend``, and ``ghostTestCatcher.dockerImage``.
+In untrusted workspaces, the extension does not prepend the workspace root or
+``src`` directory to ``PYTHONPATH``, so the CLI must be installed in the
+configured Python environment. Report webviews disable scripts, deny local
 resource roots, and include a restrictive Content Security Policy.
 
 The Testing panel integration uses the same CLI analyzer as the command

@@ -5,6 +5,7 @@ Ghost Test Catcher checks whether Python test files are grounded in the source c
 ## Features
 
 - Analyze the current Python test file from the command palette or editor title.
+- Run `Ghost Test Catcher: Setup` to detect Python, verify the CLI, choose local/static/Docker execution, and open Doctor.
 - Analyze changed Python test files in the current Git workspace.
 - Analyze selected files or folders from Explorer, including a test file plus specific source files as explicit context.
 - Automatically include local source files imported by the selected test file before broader configured source folders.
@@ -31,13 +32,22 @@ Ghost Test Catcher checks whether Python test files are grounded in the source c
 The workspace must contain this Python package or have it installed in the configured Python environment:
 
 ```bash
+pip install "ghost-test-catcher[ghost]"
+```
+
+During local development from this repository, use an editable install:
+
+```bash
 pip install -e ".[ghost]"
 ```
 
-During local development from this repository, the extension automatically prepends `<workspace>/src` to `PYTHONPATH`, so an editable install is helpful but not required for module discovery.
+The extension automatically prepends `<workspace>/src` to `PYTHONPATH` in trusted workspaces, so an editable install is helpful but not required for module discovery while developing this repository.
+
+For normal users, start with `Ghost Test Catcher: Setup`. Setup checks the configured Python executable, writes safe workspace settings, verifies `ghost_test_catcher.cli`, and offers to install the CLI when it is missing. In a local checkout of this repository, setup uses an editable install. In a regular project, setup copies or runs the package install command for the configured Python environment.
 
 ## Commands
 
+- `Ghost Test Catcher: Setup`
 - `Ghost Test Catcher: Analyze Current Test File`
 - `Ghost Test Catcher: Analyze Changed Test Files`
 - `Ghost Test Catcher: Analyze Selected Files or Folders`
@@ -74,6 +84,8 @@ Use the `Analyze with Ghost Test Catcher` run profile from the Testing panel to 
 
 ## Review Workflow
 
+Run `Ghost Test Catcher: Setup` first in a new workspace. Choose the recommended local mode for normal development, static-only mode when reviewing untrusted generated tests, or Docker mode when the team wants execution isolation. Setup updates `ghostTestCatcher.pythonPath`, `ghostTestCatcher.executeTests`, `ghostTestCatcher.executionBackend`, and `ghostTestCatcher.confirmExecution` at workspace scope, then opens Doctor so the result is visible.
+
 Analysis results are cached per workspace using the project root, test path, source context, settings, and file fingerprints. Valid cached reports are restored after a VS Code reload and are reused by command-palette and Testing panel runs. When a relevant Python file changes, stale diagnostics and cache entries are invalidated.
 
 Diagnostics expose Quick Fixes for common review actions: open the best evidence file at the reported line, copy missing symbols to the clipboard, or rerun the selected file with static analysis only. The report panel includes client-side filters and expandable evidence details for larger review sessions.
@@ -84,7 +96,7 @@ Use `Ghost Test Catcher: Add GitHub Actions Gate` to write `.github/workflows/gh
 
 When execution is enabled, the extension asks the CLI to copy selected tests and source files into a temporary directory and run the pytest runner there with plugin autoloading disabled. Pytest is used as the runner because it collects both pytest-style functions and `unittest.TestCase` methods. This is safer than running in-place, but it still executes Python test code.
 
-The extension declares limited untrusted-workspace support. In an untrusted VS Code workspace, `ghostTestCatcher.executeTests` is treated as restricted when `ghostTestCatcher.requireWorkspaceTrustForExecution` is enabled. If you start analysis there, Ghost Test Catcher offers to run static analysis only and will not execute the selected tests.
+The extension declares limited untrusted-workspace support. In an untrusted VS Code workspace, executable settings are restricted: `ghostTestCatcher.executeTests`, `ghostTestCatcher.pythonPath`, `ghostTestCatcher.executionBackend`, and `ghostTestCatcher.dockerImage`. When `ghostTestCatcher.requireWorkspaceTrustForExecution` is enabled, analysis offers static mode and will not execute selected tests. The extension also avoids prepending workspace paths to `PYTHONPATH` in untrusted workspaces, so the CLI must come from the configured Python environment rather than from code inside the untrusted folder.
 
 Doctor webviews disable scripts, report webviews use a nonce-scoped filtering script, all webviews deny local resource roots, and every webview includes a restrictive Content Security Policy. CLI processes have timeouts and are terminated when the user cancels the VS Code progress notification.
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from ghost_test_catcher.cli import main as public_main
 from llmSHAP.ghost.adapters import available_language_adapters, get_language_adapter
 from llmSHAP.ghost.analysis import analyze_existing_tests
 from llmSHAP.ghost.calibration import run_builtin_calibration
@@ -100,6 +101,19 @@ def test_cli_analyze_outputs_json_for_existing_tests(tmp_path, capsys) -> None:
     assert payload["analysis_mode"] == "analyze_existing_tests"
     assert payload["generated_tests"]["test_count"] == 1
     assert payload["execution"]["status"] == "passed"
+
+
+def test_public_cli_alias_outputs_doctor_json(tmp_path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    exit_code = public_main(["doctor", "--repo", str(repo)])
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["repo_root"] == str(repo)
+    assert payload["language_adapters"][0]["language_id"] == "python"
 
 
 def test_cli_analyze_accepts_docker_backend_for_static_analysis(tmp_path, capsys) -> None:
