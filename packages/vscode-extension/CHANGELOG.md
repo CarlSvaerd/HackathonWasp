@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.6
+
+- Split setup, Doctor, and analysis-cache persistence/fingerprinting logic out of the main extension host file.
+- Added unit coverage for cache persistence, fingerprint invalidation, setup profile choices, install-command rendering, and Doctor fallback reports.
+- Kept the extension host focused on command wiring, analysis orchestration, and small VS Code command wrappers.
+- Updated the VSIX output filename to `ghost-test-catcher-0.2.6.vsix`.
+
 ## 0.2.5
 
 - Split diagnostics, CodeLens, Quick Fix, report webview, Doctor webview, and native Testing panel logic out of the main extension host file.

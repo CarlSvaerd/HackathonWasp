@@ -2,42 +2,52 @@ const vscode = require("vscode");
 const fs = require("fs");
 const path = require("path");
 const core = require("./extensionCore");
+const cacheModule = require("./extensionCache");
 const diagnosticsModule = require("./extensionDiagnostics");
 const reportsModule = require("./extensionReports");
+const setupModule = require("./extensionSetup");
 const testingModule = require("./extensionTesting");
 const utils = require("./extensionUtils");
 
 const {
   isCancellationError,
-  isInsideOrEqualPath,
-  quoteForLog,
   shouldSkipDirectory,
-  throwIfCancellationRequested,
 } = utils;
 
-let extensionContext;
 let codeLensChanged;
 let diagnosticManager;
 let reportPanels;
 let outputChannel;
 let testExplorer;
+let analysisCacheManager;
+let setupManager;
 let lastReports = [];
-const analysisCache = new Map();
 const ANALYSIS_TIMEOUT_MS = 120000;
 const DOCTOR_TIMEOUT_MS = 30000;
-const SETUP_TIMEOUT_MS = 300000;
-const ANALYSIS_CACHE_STORAGE_KEY = "ghostTestCatcher.analysisCache.v1";
-const ANALYSIS_CACHE_MAX_ENTRIES = 100;
 const SETUP_NUDGE_STORAGE_KEY = "ghostTestCatcher.setupNudge.v1";
 
 function activate(context) {
-  extensionContext = context;
   const diagnostics = vscode.languages.createDiagnosticCollection("ghost-test-catcher");
   codeLensChanged = new vscode.EventEmitter();
   diagnosticManager = new diagnosticsModule.GhostDiagnosticManager({ vscode, diagnostics, codeLensChanged });
   reportPanels = new reportsModule.GhostReportPanels({ vscode, createNonce: utils.createNonce });
   outputChannel = vscode.window.createOutputChannel("Ghost Test Catcher");
-  loadAnalysisCache();
+  setupManager = new setupModule.GhostSetupManager({
+    vscode,
+    context,
+    getConfig,
+    getActiveWorkspaceFolder,
+    buildPythonEnv,
+    execFile,
+    openDoctorReport,
+    logOutput,
+  });
+  analysisCacheManager = new cacheModule.AnalysisCacheManager({
+    workspaceState: context.workspaceState,
+    getConfig,
+    logOutput,
+  });
+  analysisCacheManager.load();
 
   context.subscriptions.push(diagnostics);
   context.subscriptions.push(codeLensChanged);
@@ -84,7 +94,7 @@ async function refreshTestExplorer() {
 }
 
 async function openSetupGuide() {
-  await openExtensionReadme();
+  await setupManager?.openExtensionReadme();
 }
 
 async function maybeShowSetupNudge(context) {
@@ -134,8 +144,7 @@ async function workspaceHasPythonTests() {
 }
 
 async function clearAnalysisCache() {
-  analysisCache.clear();
-  await persistAnalysisCache();
+  await analysisCacheManager?.clear();
   vscode.window.showInformationMessage("Ghost Test Catcher analysis cache cleared.");
 }
 
@@ -473,10 +482,10 @@ async function runCli(testFile, executeTests, selectedSourceFiles = [], token) {
   const cacheEnabled = config.get("analysisCacheEnabled", true);
   const cacheKey = core.analysisCacheKey(cacheMetadata);
   const fingerprints = cacheEnabled
-    ? await buildAnalysisFingerprints(root, testFile, sourcePaths, config.get("cacheFingerprintLimit", 300))
+    ? await analysisCacheManager.buildFingerprints(root, testFile, sourcePaths, config.get("cacheFingerprintLimit", 300))
     : null;
   if (cacheEnabled && fingerprints) {
-    const cached = readCachedAnalysis(cacheKey, fingerprints);
+    const cached = analysisCacheManager.read(cacheKey, fingerprints);
     if (cached) {
       logOutput(`Using cached ${label}.`);
       cached.__sourcePaths = sourcePaths;
@@ -501,7 +510,7 @@ async function runCli(testFile, executeTests, selectedSourceFiles = [], token) {
     result.__inferredSourcePaths = inferredSourcePaths;
     result.__cacheHit = false;
     if (cacheEnabled && fingerprints) {
-      await writeCachedAnalysis(cacheKey, cacheMetadata, fingerprints, result);
+      await analysisCacheManager.write(cacheKey, cacheMetadata, fingerprints, result);
     }
     return result;
   } catch (error) {
@@ -511,203 +520,23 @@ async function runCli(testFile, executeTests, selectedSourceFiles = [], token) {
   }
 }
 
-function loadAnalysisCache() {
-  analysisCache.clear();
-  if (!shouldPersistAnalysisCache()) {
-    extensionContext?.workspaceState.update(ANALYSIS_CACHE_STORAGE_KEY, []).then(undefined, (error) => {
-      logOutput(`Failed to clear persisted analysis cache after persistence was disabled: ${error.message}`);
-    });
-    return;
-  }
-  const entries = extensionContext?.workspaceState.get(ANALYSIS_CACHE_STORAGE_KEY, []) || [];
-  for (const entry of entries) {
-    if (entry && entry.key && entry.result && entry.fingerprints && entry.metadata) {
-      analysisCache.set(entry.key, entry);
-    }
-  }
-}
-
-async function persistAnalysisCache() {
-  if (!extensionContext) {
-    return;
-  }
-  if (!shouldPersistAnalysisCache()) {
-    await extensionContext.workspaceState.update(ANALYSIS_CACHE_STORAGE_KEY, []);
-    return;
-  }
-  const entries = Array.from(analysisCache.values())
-    .sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0))
-    .slice(0, ANALYSIS_CACHE_MAX_ENTRIES);
-  await extensionContext.workspaceState.update(ANALYSIS_CACHE_STORAGE_KEY, entries);
-}
-
 async function restoreCachedReports() {
-  if (!shouldPersistAnalysisCache()) {
-    return;
-  }
-  const restored = [];
-  let pruned = false;
-  for (const [key, entry] of analysisCache.entries()) {
-    const metadata = entry.metadata || {};
-    if (!metadata.root || !metadata.testFile || !Array.isArray(metadata.sourcePaths)) {
-      analysisCache.delete(key);
-      pruned = true;
-      continue;
-    }
-
-    const fingerprints = await buildAnalysisFingerprints(
-      metadata.root,
-      metadata.testFile,
-      metadata.sourcePaths,
-      getConfig().get("cacheFingerprintLimit", 300)
-    );
-    if (!fingerprints || !fingerprintsEqual(fingerprints, entry.fingerprints)) {
-      analysisCache.delete(key);
-      pruned = true;
-      continue;
-    }
-
-    const result = cloneJson(entry.result);
-    result.__testFile = metadata.testFile;
-    result.__sourcePaths = metadata.sourcePaths;
-    result.__inferredSourcePaths = result.__inferredSourcePaths || [];
-    result.__cacheHit = true;
+  const restored = await analysisCacheManager.restore();
+  const published = [];
+  for (const result of restored) {
     try {
-      publishResult(metadata.testFile, result);
-      restored.push(result);
+      publishResult(result.__testFile, result);
+      published.push(result);
     } catch (error) {
-      logOutput(`Could not restore cached diagnostics for ${metadata.testFile}: ${error.message}`);
+      logOutput(`Could not restore cached diagnostics for ${result.__testFile}: ${error.message}`);
     }
   }
-  if (restored.length) {
-    updateLastReports(restored
+  if (published.length) {
+    updateLastReports(published
       .sort((left, right) => String(left.__testFile || "").localeCompare(String(right.__testFile || "")))
       .slice(0, 20));
-    logOutput(`Restored ${restored.length} cached Ghost Test Catcher report${restored.length === 1 ? "" : "s"}.`);
+    logOutput(`Restored ${published.length} cached Ghost Test Catcher report${published.length === 1 ? "" : "s"}.`);
   }
-  if (pruned) {
-    await persistAnalysisCache();
-  }
-}
-
-function shouldPersistAnalysisCache() {
-  return getConfig().get("persistAnalysisCache", true);
-}
-
-function readCachedAnalysis(cacheKey, fingerprints) {
-  const entry = analysisCache.get(cacheKey);
-  if (!entry || !fingerprintsEqual(fingerprints, entry.fingerprints)) {
-    return null;
-  }
-  entry.updatedAt = Date.now();
-  persistAnalysisCache().catch((error) => logOutput(`Failed to update cache recency: ${error.message}`));
-  return cloneJson(entry.result);
-}
-
-async function writeCachedAnalysis(cacheKey, metadata, fingerprints, result) {
-  analysisCache.set(cacheKey, {
-    key: cacheKey,
-    metadata: cloneJson(metadata),
-    fingerprints,
-    result: cloneJson(result),
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  });
-  await persistAnalysisCache();
-}
-
-async function buildAnalysisFingerprints(root, testFile, sourcePaths, limit) {
-  const entries = [];
-  const state = { count: 0, limit: Number(limit || 300), exceeded: false };
-  await addFingerprintForPath(entries, testFile, state);
-  for (const sourcePath of sourcePaths || []) {
-    const absolute = path.isAbsolute(sourcePath) ? sourcePath : path.join(root, sourcePath);
-    await addFingerprintForPath(entries, absolute, state);
-    if (state.exceeded) {
-      logOutput(`Skipping analysis cache because source fingerprinting exceeded ${state.limit} files.`);
-      return null;
-    }
-  }
-  return entries.sort((left, right) => left.path.localeCompare(right.path));
-}
-
-async function addFingerprintForPath(entries, targetPath, state) {
-  if (state.exceeded) {
-    return;
-  }
-  let stats;
-  try {
-    stats = await fs.promises.stat(targetPath);
-  } catch {
-    entries.push({ path: core.normalizePath(targetPath), missing: true });
-    return;
-  }
-
-  if (stats.isDirectory()) {
-    entries.push(fingerprintEntry(targetPath, stats, "directory"));
-    const files = [];
-    await collectFingerprintFiles(targetPath, files, state);
-    for (const file of files) {
-      if (state.exceeded) {
-        return;
-      }
-      await addFingerprintForPath(entries, file, state);
-    }
-    return;
-  }
-
-  if (stats.isFile()) {
-    state.count += 1;
-    if (state.count > state.limit) {
-      state.exceeded = true;
-      return;
-    }
-    entries.push(fingerprintEntry(targetPath, stats, "file"));
-  }
-}
-
-async function collectFingerprintFiles(directory, files, state) {
-  if (state.exceeded || shouldSkipDirectory(directory)) {
-    return;
-  }
-  let entries;
-  try {
-    entries = await fs.promises.readdir(directory, { withFileTypes: true });
-  } catch {
-    return;
-  }
-  entries.sort((left, right) => left.name.localeCompare(right.name));
-  for (const entry of entries) {
-    const absolute = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      await collectFingerprintFiles(absolute, files, state);
-      continue;
-    }
-    if (entry.isFile() && core.isPythonPath(absolute)) {
-      files.push(absolute);
-      if (files.length > state.limit) {
-        state.exceeded = true;
-        return;
-      }
-    }
-  }
-}
-
-function fingerprintEntry(file, stats, kind) {
-  return {
-    path: core.normalizePath(file),
-    kind,
-    mtimeMs: Math.round(Number(stats.mtimeMs || 0)),
-    size: Number(stats.size || 0),
-  };
-}
-
-function fingerprintsEqual(left, right) {
-  return JSON.stringify(left || []) === JSON.stringify(right || []);
-}
-
-function cloneJson(value) {
-  return JSON.parse(JSON.stringify(value));
 }
 
 function handlePythonFileChanged(uri) {
@@ -731,444 +560,17 @@ function handlePythonFileDeleted(uri) {
 }
 
 function invalidateAnalysisCacheForPath(changedPath) {
-  const normalized = core.normalizePath(changedPath);
-  let changed = false;
-  for (const [key, entry] of analysisCache.entries()) {
-    const metadata = entry.metadata || {};
-    const root = metadata.root || "";
-    const testFile = metadata.testFile || "";
-    const sourcePaths = metadata.sourcePaths || [];
-    const fingerprintHit = (entry.fingerprints || []).some((item) => item.path === normalized);
-    const sourceSpecHit = sourcePaths.some((sourcePath) => {
-      const absolute = path.isAbsolute(sourcePath) ? sourcePath : path.join(root, sourcePath);
-      return isInsideOrEqualPath(changedPath, absolute);
-    });
-    if (core.normalizePath(testFile) === normalized || fingerprintHit || sourceSpecHit) {
-      analysisCache.delete(key);
-      changed = true;
-    }
-  }
-  if (changed) {
-    persistAnalysisCache().catch((error) => logOutput(`Failed to persist cache invalidation: ${error.message}`));
-  }
+  analysisCacheManager?.invalidateForPath(changedPath).catch((error) => {
+    logOutput(`Failed to persist cache invalidation: ${error.message}`);
+  });
 }
 
 async function setupGhostTestCatcher(uri) {
-  const targetUri = uri?.scheme === "file"
-    ? uri
-    : vscode.window.activeTextEditor?.document.uri;
-  const folder = targetUri
-    ? vscode.workspace.getWorkspaceFolder(targetUri)
-    : getActiveWorkspaceFolder();
-  if (!folder) {
-    vscode.window.showWarningMessage("Open a workspace before running Ghost Test Catcher setup.");
-    return;
-  }
-
-  const targetPath = targetUri?.scheme === "file" ? targetUri.fsPath : folder.uri.fsPath;
-  const root = core.findProjectRootForFile(targetPath, folder.uri.fsPath);
-  const profile = await vscode.window.showQuickPick(
-    [
-      {
-        id: "local",
-        label: "Recommended: local execution with confirmation",
-        description: "Analyze tests and ask before executing Python test code.",
-        detail: "Best day-to-day mode. Existing-test review uses 0 LLM calls and only runs pytest after confirmation.",
-      },
-      {
-        id: "static",
-        label: "Static analysis only",
-        description: "Never execute tests from VS Code; safest first-run mode.",
-        detail: "Cheapest and safest review mode. Uses 0 LLM calls and skips pytest execution entirely.",
-      },
-      {
-        id: "docker",
-        label: "Docker isolation",
-        description: "Execute tests inside the configured Docker image.",
-        detail: "Still 0 LLM calls for existing tests, but isolates pytest in a container when Docker is available.",
-      },
-    ],
-    {
-      ignoreFocusOut: true,
-      placeHolder: "Choose how Ghost Test Catcher should run in this workspace.",
-    }
-  );
-  if (!profile) {
-    return;
-  }
-  let profileId = profile.id;
-  if (!vscode.workspace.isTrusted && profileId !== "static") {
-    vscode.window.showWarningMessage(
-      "This workspace is untrusted, so Ghost Test Catcher setup will use static analysis only until the workspace is trusted."
-    );
-    profileId = "static";
-  }
-
-  const config = getConfig();
-  const candidates = core.defaultPythonCandidates(config.get("pythonPath", "python"), root);
-  const setupState = await vscode.window.withProgress(
-    {
-      location: vscode.ProgressLocation.Notification,
-      title: "Setting up Ghost Test Catcher",
-      cancellable: true,
-    },
-    async (progress, token) => {
-      progress.report({ message: "Finding Python" });
-      const python = await findPythonForSetup(root, candidates, token);
-      if (!python) {
-        return {
-          root,
-          profileId,
-          python: null,
-          cli: { ok: false, message: `No usable Python executable found. Tried: ${candidates.join(", ")}` },
-        };
-      }
-
-      throwIfCancellationRequested(token, "Ghost Test Catcher setup was cancelled.");
-      progress.report({ message: "Checking Ghost Test Catcher CLI" });
-      const cli = await checkGhostCliImport(root, python.command, token);
-      return {
-        root,
-        profileId,
-        python,
-        cli,
-      };
-    }
-  );
-
-  if (!setupState?.python) {
-    vscode.window.showErrorMessage(setupState?.cli?.message || "Ghost Test Catcher setup could not find Python.");
-    return;
-  }
-
-  await applySetupSettings(setupState.python.command, setupState.profileId);
-
-  let cliReady = setupState.cli.ok;
-  if (!cliReady) {
-    cliReady = await offerCliInstall(setupState.root, setupState.python.command, setupState.cli.message);
-  }
-
-  if (setupState.profileId === "docker") {
-    await verifyDockerSetup(getConfig().get("dockerImage", "ghost-test-catcher-runner:latest"));
-  }
-
-  if (!cliReady) {
-    vscode.window.showWarningMessage(
-      "Ghost Test Catcher setup saved your workspace settings, but the Python CLI is still not importable. Run Doctor after installing the package."
-    );
-    await runDoctor(vscode.Uri.file(setupState.root));
-    return;
-  }
-
-  vscode.window.showInformationMessage(
-    `Ghost Test Catcher is ready with ${setupState.python.executable || setupState.python.command}.`
-  );
-  await runDoctor(vscode.Uri.file(setupState.root));
-}
-
-async function findPythonForSetup(root, candidates, token) {
-  for (const command of candidates) {
-    try {
-      throwIfCancellationRequested(token, "Ghost Test Catcher setup was cancelled.");
-      const result = await execFile(
-        command,
-        ["-c", "import sys; print(sys.executable); print(sys.version.split()[0])"],
-        {
-          cwd: root,
-          env: buildPythonEnv(root),
-          maxBuffer: 1024 * 1024,
-          timeout: DOCTOR_TIMEOUT_MS,
-          token,
-          label: `setup python check (${command})`,
-        }
-      );
-      const lines = result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-      return {
-        command,
-        executable: lines[0] || command,
-        version: lines[1] || "unknown",
-      };
-    } catch (error) {
-      if (isCancellationError(error)) {
-        throw error;
-      }
-      logOutput(`Setup skipped Python candidate ${command}: ${error.message}`);
-    }
-  }
-  return null;
-}
-
-async function checkGhostCliImport(root, pythonPath, token) {
-  try {
-    const result = await execFile(
-      pythonPath,
-      ["-c", `import ${core.GHOST_CLI_MODULE} as cli; print(cli.__file__)`],
-      {
-        cwd: root,
-        env: buildPythonEnv(root),
-        maxBuffer: 1024 * 1024,
-        timeout: DOCTOR_TIMEOUT_MS,
-        token,
-        label: "setup CLI import check",
-      }
-    );
-    return {
-      ok: true,
-      module: core.GHOST_CLI_MODULE,
-      path: result.stdout.trim(),
-      message: `Loaded ${core.GHOST_CLI_MODULE} from ${result.stdout.trim()}.`,
-    };
-  } catch (error) {
-    if (isCancellationError(error)) {
-      throw error;
-    }
-    return {
-      ok: false,
-      module: core.GHOST_CLI_MODULE,
-      message: `Could not import ${core.GHOST_CLI_MODULE}. ${error.message}`,
-    };
-  }
-}
-
-async function applySetupSettings(pythonPath, profileId) {
-  const profileSettings = core.setupProfileSettings(profileId);
-  const config = getConfig();
-  await config.update("pythonPath", pythonPath, vscode.ConfigurationTarget.Workspace);
-  await config.update("executeTests", profileSettings.executeTests, vscode.ConfigurationTarget.Workspace);
-  await config.update("executionBackend", profileSettings.executionBackend, vscode.ConfigurationTarget.Workspace);
-  await config.update("confirmExecution", profileSettings.confirmExecution, vscode.ConfigurationTarget.Workspace);
-}
-
-async function offerCliInstall(root, pythonPath, importMessage) {
-  const hasLocalProject = fs.existsSync(path.join(root, "pyproject.toml"));
-  const installArgs = hasLocalProject ? core.editableInstallArgs() : core.pypiInstallArgs();
-  const installCommand = `${quoteForLog(pythonPath)} ${installArgs.map(quoteForLog).join(" ")}`;
-  const choice = await vscode.window.showWarningMessage(
-    `${importMessage} Install Ghost Test Catcher for this Python environment?`,
-    { modal: false },
-    "Install CLI",
-    "Copy Install Command",
-    "Open Setup Docs",
-    "Cancel"
-  );
-
-  if (choice === "Copy Install Command") {
-    await vscode.env.clipboard.writeText(installCommand);
-    vscode.window.showInformationMessage("Copied the Ghost Test Catcher install command.");
-    return false;
-  }
-
-  if (choice === "Open Setup Docs") {
-    await openExtensionReadme();
-    return false;
-  }
-
-  if (choice !== "Install CLI") {
-    return false;
-  }
-
-  if (!vscode.workspace.isTrusted) {
-    vscode.window.showWarningMessage("Ghost Test Catcher will not install Python packages from an untrusted workspace.");
-    return false;
-  }
-
-  try {
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: "Installing Ghost Test Catcher CLI",
-        cancellable: true,
-      },
-      async (progress, token) => {
-        progress.report({ message: installCommand });
-        await execFile(pythonPath, installArgs, {
-          cwd: root,
-          env: process.env,
-          maxBuffer: 20 * 1024 * 1024,
-          timeout: SETUP_TIMEOUT_MS,
-          token,
-          label: "setup CLI install",
-        });
-      }
-    );
-  } catch (error) {
-    if (isCancellationError(error)) {
-      vscode.window.showInformationMessage("Ghost Test Catcher CLI install cancelled.");
-      return false;
-    }
-    logOutput(`Setup CLI install failed: ${error.message}`);
-    vscode.window.showErrorMessage(`Ghost Test Catcher CLI install failed: ${error.message}`);
-    return false;
-  }
-
-  const postInstall = await checkGhostCliImport(root, pythonPath);
-  if (!postInstall.ok) {
-    vscode.window.showWarningMessage(`Ghost Test Catcher install finished, but the CLI still did not import. ${postInstall.message}`);
-    return false;
-  }
-  return true;
-}
-
-async function verifyDockerSetup(dockerImage) {
-  try {
-    await execFile("docker", ["version", "--format", "{{.Server.Version}}"], {
-      maxBuffer: 1024 * 1024,
-      timeout: DOCTOR_TIMEOUT_MS,
-      label: "setup Docker engine check",
-    });
-  } catch (error) {
-    vscode.window.showWarningMessage(`Docker execution is selected, but Docker is not available yet. ${error.message}`);
-    return false;
-  }
-
-  try {
-    await execFile("docker", ["image", "inspect", dockerImage], {
-      maxBuffer: 1024 * 1024,
-      timeout: DOCTOR_TIMEOUT_MS,
-      label: "setup Docker image check",
-    });
-    return true;
-  } catch (error) {
-    const command = `docker build -t ${quoteForLog(dockerImage)} docker/ghost-test-catcher-runner`;
-    const choice = await vscode.window.showWarningMessage(
-      `Docker is available, but image ${dockerImage} was not found. Build it before running tests with Docker.`,
-      { modal: false },
-      "Copy Build Command",
-      "Continue"
-    );
-    if (choice === "Copy Build Command") {
-      await vscode.env.clipboard.writeText(command);
-      vscode.window.showInformationMessage("Copied the Ghost Test Catcher Docker build command.");
-    }
-    logOutput(`Docker image check failed for ${dockerImage}: ${error.message}`);
-    return false;
-  }
-}
-
-async function openExtensionReadme() {
-  const readmeCandidates = [
-    extensionContext?.asAbsolutePath("README.md"),
-    extensionContext?.asAbsolutePath("readme.md"),
-  ].filter(Boolean);
-  for (const readmePath of readmeCandidates) {
-    if (fs.existsSync(readmePath)) {
-      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(readmePath));
-      await vscode.window.showTextDocument(document, vscode.ViewColumn.Beside);
-      return;
-    }
-  }
-  vscode.window.showInformationMessage("Open the Ghost Test Catcher extension README from the Extensions view for setup instructions.");
+  await setupManager?.setup(uri);
 }
 
 async function runDoctor(uri) {
-  const targetUri = uri?.scheme === "file"
-    ? uri
-    : vscode.window.activeTextEditor?.document.uri;
-  const folder = targetUri
-    ? vscode.workspace.getWorkspaceFolder(targetUri)
-    : getActiveWorkspaceFolder();
-  if (!folder) {
-    vscode.window.showWarningMessage("Open a workspace before running Ghost Test Catcher Doctor.");
-    return;
-  }
-
-  const targetPath = targetUri?.scheme === "file" ? targetUri.fsPath : folder.uri.fsPath;
-  const root = core.findProjectRootForFile(targetPath, folder.uri.fsPath);
-  const config = getConfig();
-  const pythonPath = config.get("pythonPath", "python");
-  const configuredSourcePaths = config.get("sourcePaths", ["src"]);
-  const inferredSourcePaths = targetPath && core.isPythonPath(targetPath) && core.isTestPath(targetPath)
-    ? core.inferSourcePathsFromImports(root, targetPath)
-    : [];
-  const env = buildPythonEnv(root);
-
-  await vscode.window.withProgress(
-    {
-      location: vscode.ProgressLocation.Notification,
-      title: "Running Ghost Test Catcher Doctor",
-      cancellable: true,
-    },
-    async (progress, token) => {
-      const report = {
-        root,
-        pythonPath,
-        sourcePaths: core.mergeSourcePaths(inferredSourcePaths, configuredSourcePaths),
-        inferredSourcePaths,
-        importOk: false,
-        importMessage: "",
-        doctor: null,
-      };
-
-      try {
-        progress.report({ message: "Checking Python module import" });
-        const importCheck = await execFile(
-          pythonPath,
-          ["-c", `import ${core.GHOST_CLI_MODULE} as cli; print(cli.__file__)`],
-          {
-            cwd: root,
-            env,
-            maxBuffer: 1024 * 1024,
-            timeout: DOCTOR_TIMEOUT_MS,
-            token,
-            label: "doctor import check",
-          }
-        );
-        report.importOk = true;
-        report.importMessage = `Loaded ${core.GHOST_CLI_MODULE} from ${importCheck.stdout.trim()}.`;
-      } catch (error) {
-        if (isCancellationError(error)) {
-          vscode.window.showInformationMessage("Ghost Test Catcher Doctor cancelled.");
-          return;
-        }
-        report.importOk = false;
-        report.importMessage = `Could not import ${core.GHOST_CLI_MODULE} with the configured Python path. ${error.message}`;
-      }
-
-      try {
-        if (token.isCancellationRequested) {
-          vscode.window.showInformationMessage("Ghost Test Catcher Doctor cancelled.");
-          return;
-        }
-        progress.report({ message: "Inspecting CLI configuration" });
-        const doctorResult = await execFile(
-          pythonPath,
-          ["-m", core.GHOST_CLI_MODULE, "doctor", "--repo", root],
-          {
-            cwd: root,
-            env,
-            maxBuffer: 5 * 1024 * 1024,
-            timeout: DOCTOR_TIMEOUT_MS,
-            token,
-            label: "doctor CLI inspection",
-          }
-        );
-        report.doctor = JSON.parse(doctorResult.stdout);
-      } catch (error) {
-        if (isCancellationError(error)) {
-          vscode.window.showInformationMessage("Ghost Test Catcher Doctor cancelled.");
-          return;
-        }
-        report.doctor = {
-          config: {
-            source_paths: configuredSourcePaths,
-            test_paths: [],
-            test_mode: config.get("testMode", "mixed"),
-            execute_tests: config.get("executeTests", true),
-          },
-          discovered_source_specs: [],
-          discovered_test_specs: [],
-          error: error.message,
-        };
-      }
-
-      openDoctorReport(report);
-      vscode.window.showInformationMessage(
-        report.importOk
-          ? "Ghost Test Catcher Doctor: Python module loaded successfully."
-          : "Ghost Test Catcher Doctor: setup issue found."
-      );
-    }
-  );
+  await setupManager?.runDoctor(uri);
 }
 
 function openDoctorReport(report) {

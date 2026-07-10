@@ -2,7 +2,7 @@
   "name": "ghost-test-catcher",
   "displayName": "Ghost Test Catcher",
   "description": "Detect whether AI-generated Python tests are grounded in your actual source code.",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "publisher": "carl-svaerd",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -70,13 +70,13 @@
   ],
   "main": "./extension.js",
   "scripts": {
-    "check": "node --check extension.js && node --check extensionCore.js && node --check extensionDiagnostics.js && node --check extensionReports.js && node --check extensionTesting.js && node --check extensionUtils.js",
+    "check": "node --check extension.js && node --check extensionCache.js && node --check extensionCore.js && node --check extensionDiagnostics.js && node --check extensionReports.js && node --check extensionSetup.js && node --check extensionTesting.js && node --check extensionUtils.js",
     "test": "node --test test/*.test.js",
     "test:unit": "node --test test/*.test.js",
     "test:integration": "node test/integration/runTest.js",
     "test:integration:ci": "node test/integration/runCi.js",
     "test:all": "node --test test/*.test.js && node test/integration/runTest.js",
-    "package": "vsce package --no-dependencies --out ghost-test-catcher-0.2.5.vsix"
+    "package": "vsce package --no-dependencies --out ghost-test-catcher-0.2.6.vsix"
   },
   "devDependencies": {
     "@vscode/test-electron": "^2.4.1",
