@@ -1,3 +1,5 @@
+// @ts-check
+
 const fs = require("fs");
 const path = require("path");
 const core = require("./extensionCore");
@@ -9,7 +11,20 @@ const {
 const ANALYSIS_CACHE_STORAGE_KEY = "ghostTestCatcher.analysisCache.v1";
 const DEFAULT_ANALYSIS_CACHE_MAX_ENTRIES = 100;
 
+/**
+ * @typedef {{ get: (key: string, defaultValue?: any) => any, update: (key: string, value: any) => PromiseLike<void> }} WorkspaceStateLike
+ * @typedef {{ get: (key: string, defaultValue?: any) => any }} ConfigLike
+ * @typedef {{ workspaceState?: WorkspaceStateLike, getConfig?: () => ConfigLike, logOutput?: (message: string) => void, maxEntries?: number }} AnalysisCacheOptions
+ * @typedef {{ path: string, kind?: "file" | "directory", missing?: boolean, mtimeMs?: number, size?: number }} FingerprintEntry
+ * @typedef {{ root?: string, testFile?: string, sourcePaths?: string[] }} CacheMetadata
+ * @typedef {{ key: string, metadata: CacheMetadata, fingerprints: FingerprintEntry[], result: Record<string, any>, createdAt?: number, updatedAt?: number }} PersistedCacheEntry
+ * @typedef {{ count: number, limit: number, exceeded: boolean }} FingerprintState
+ */
+
 class AnalysisCacheManager {
+  /**
+   * @param {AnalysisCacheOptions} [options]
+   */
   constructor(options = {}) {
     if (!options.workspaceState) {
       throw new Error("AnalysisCacheManager requires VS Code workspaceState.");
@@ -17,10 +32,11 @@ class AnalysisCacheManager {
     if (typeof options.getConfig !== "function") {
       throw new Error("AnalysisCacheManager requires getConfig.");
     }
-    this.workspaceState = options.workspaceState;
-    this.getConfig = options.getConfig;
+    this.workspaceState = /** @type {WorkspaceStateLike} */ (options.workspaceState);
+    this.getConfig = /** @type {() => ConfigLike} */ (options.getConfig);
     this.logOutput = typeof options.logOutput === "function" ? options.logOutput : () => {};
     this.maxEntries = Number(options.maxEntries || DEFAULT_ANALYSIS_CACHE_MAX_ENTRIES);
+    /** @type {Map<string, PersistedCacheEntry>} */
     this.entries = new Map();
   }
 
@@ -202,10 +218,16 @@ class AnalysisCacheManager {
   }
 
   shouldPersist() {
-    return this.getConfig().get("persistAnalysisCache", true);
+    return Boolean(this.getConfig().get("persistAnalysisCache", true));
   }
 }
 
+/**
+ * @param {string} directory
+ * @param {string[]} files
+ * @param {FingerprintState} state
+ * @returns {Promise<void>}
+ */
 async function collectFingerprintFiles(directory, files, state) {
   if (state.exceeded || shouldSkipDirectory(directory)) {
     return;
@@ -235,10 +257,21 @@ async function collectFingerprintFiles(directory, files, state) {
   }
 }
 
+/**
+ * @param {unknown} entry
+ * @returns {boolean}
+ */
 function isPersistedCacheEntry(entry) {
-  return Boolean(entry && entry.key && entry.result && entry.fingerprints && entry.metadata);
+  const candidate = /** @type {Partial<PersistedCacheEntry>} */ (entry || {});
+  return Boolean(candidate.key && candidate.result && candidate.fingerprints && candidate.metadata);
 }
 
+/**
+ * @param {string} file
+ * @param {import("fs").Stats} stats
+ * @param {"file" | "directory"} kind
+ * @returns {FingerprintEntry}
+ */
 function fingerprintEntry(file, stats, kind) {
   return {
     path: core.normalizePath(file),
@@ -248,10 +281,20 @@ function fingerprintEntry(file, stats, kind) {
   };
 }
 
+/**
+ * @param {unknown} left
+ * @param {unknown} right
+ * @returns {boolean}
+ */
 function fingerprintsEqual(left, right) {
   return JSON.stringify(left || []) === JSON.stringify(right || []);
 }
 
+/**
+ * @template T
+ * @param {T} value
+ * @returns {T}
+ */
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }

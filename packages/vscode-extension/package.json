@@ -70,7 +70,10 @@
   ],
   "main": "./extension.js",
   "scripts": {
-    "check": "node --check extension.js && node --check extensionCache.js && node --check extensionCore.js && node --check extensionDiagnostics.js && node --check extensionReports.js && node --check extensionSetup.js && node --check extensionTesting.js && node --check extensionUtils.js && node ../../tools/vscode_extension_static_audit.js",
+    "check": "npm run check:syntax && npm run check:types && npm run check:static",
+    "check:syntax": "node --check extension.js && node --check extensionCache.js && node --check extensionCore.js && node --check extensionDiagnostics.js && node --check extensionReports.js && node --check extensionSetup.js && node --check extensionTesting.js && node --check extensionUtils.js",
+    "check:types": "tsc -p tsconfig.json --noEmit",
+    "check:static": "node ../../tools/vscode_extension_static_audit.js",
     "test": "node --test test/*.test.js",
     "test:unit": "node --test test/*.test.js",
     "test:integration": "node test/integration/runTest.js",
@@ -79,8 +82,11 @@
     "package": "vsce package --no-dependencies --out ghost-test-catcher-0.2.7.vsix"
   },
   "devDependencies": {
+    "@types/node": "^20.17.6",
+    "@types/vscode": "^1.88.0",
     "@vscode/test-electron": "^2.4.1",
-    "@vscode/vsce": "^3.6.0"
+    "@vscode/vsce": "^3.6.0",
+    "typescript": "^5.6.3"
   },
   "contributes": {
     "walkthroughs": [

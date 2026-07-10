@@ -1,7 +1,44 @@
+// @ts-check
+
 const childProcess = require("child_process");
 const crypto = require("crypto");
 const path = require("path");
 
+/**
+ * @typedef {{
+ *   baseEnv?: NodeJS.ProcessEnv,
+ *   includeWorkspacePaths?: boolean,
+ *   pathDelimiter?: string
+ * }} PythonEnvOptions
+ *
+ * @typedef {{
+ *   isCancellationRequested?: boolean,
+ *   onCancellationRequested?: (listener: () => void) => { dispose: () => void }
+ * }} CancellationTokenLike
+ *
+ * @typedef {{
+ *   cwd?: string,
+ *   env?: NodeJS.ProcessEnv,
+ *   label?: string,
+ *   timeout?: number,
+ *   timeoutMs?: number,
+ *   maxBuffer?: number,
+ *   logOutput?: (message: string) => void,
+ *   appendOutput?: (chunk: string) => void,
+ *   token?: CancellationTokenLike
+ * }} ExecFileOptions
+ *
+ * @typedef {{ stdout: string, stderr: string }} ExecFileResult
+ * @typedef {Error & { cancelled?: boolean, stdout?: string, stderr?: string, exitCode?: number }} ExtensionProcessError
+ */
+
+/**
+ * Builds the Python environment used by extension-owned CLI calls.
+ *
+ * @param {string} root
+ * @param {PythonEnvOptions} [options]
+ * @returns {NodeJS.ProcessEnv}
+ */
 function buildPythonEnv(root, options = {}) {
   const env = { ...(options.baseEnv || process.env) };
   const includeWorkspacePaths = Boolean(options.includeWorkspacePaths);
@@ -19,6 +56,10 @@ function buildPythonEnv(root, options = {}) {
   return env;
 }
 
+/**
+ * @param {string} directory
+ * @returns {boolean}
+ */
 function shouldSkipDirectory(directory) {
   const normalized = toPosixPath(directory).toLowerCase();
   const segments = normalized.split("/").filter(Boolean);
@@ -42,6 +83,15 @@ function shouldSkipDirectory(directory) {
     || normalized.endsWith("/docs/_build");
 }
 
+/**
+ * Runs a child process without shell interpolation, collects bounded output,
+ * and terminates the full process tree on cancellation or timeout.
+ *
+ * @param {string} command
+ * @param {string[]} args
+ * @param {ExecFileOptions} [options]
+ * @returns {Promise<ExecFileResult>}
+ */
 function execFile(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const label = options.label || command;
@@ -89,7 +139,7 @@ function execFile(command, args, options = {}) {
     };
     const stopProcess = (message) => {
       terminateProcess(child);
-      const error = new Error(message);
+      const error = /** @type {ExtensionProcessError} */ (new Error(message));
       error.cancelled = message.toLowerCase().includes("cancelled");
       finishReject(error);
     };
@@ -128,7 +178,7 @@ function execFile(command, args, options = {}) {
         return;
       }
       const message = stderr.trim() || stdout.trim() || `${label} exited with code ${code}.`;
-      const error = new Error(message);
+      const error = /** @type {ExtensionProcessError} */ (new Error(message));
       error.stdout = stdout;
       error.stderr = stderr;
       error.exitCode = code;
@@ -140,7 +190,7 @@ function execFile(command, args, options = {}) {
         stopProcess(`${label} timed out after ${Math.round(timeoutMs / 1000)} seconds.`);
       }, timeoutMs);
     }
-    if (options.token) {
+    if (options.token && typeof options.token.onCancellationRequested === "function") {
       cancellation = options.token.onCancellationRequested(() => {
         stopProcess(`${label} was cancelled.`);
       });
@@ -151,6 +201,10 @@ function execFile(command, args, options = {}) {
   });
 }
 
+/**
+ * @param {import("child_process").ChildProcess} child
+ * @returns {void}
+ */
 function terminateProcess(child) {
   if (!child.pid) {
     return;
@@ -176,32 +230,58 @@ function terminateProcess(child) {
   }
 }
 
+/**
+ * @param {unknown} error
+ * @returns {boolean}
+ */
 function isCancellationError(error) {
-  return Boolean(error?.cancelled) || /cancelled/i.test(error?.message || "");
+  const candidate = /** @type {{ cancelled?: boolean, message?: string }} */ (error || {});
+  return Boolean(candidate.cancelled) || /cancelled/i.test(candidate.message || "");
 }
 
+/**
+ * @param {CancellationTokenLike | undefined} token
+ * @param {string} message
+ * @returns {void}
+ */
 function throwIfCancellationRequested(token, message) {
   if (token?.isCancellationRequested) {
-    const error = new Error(message);
+    const error = /** @type {ExtensionProcessError} */ (new Error(message));
     error.cancelled = true;
     throw error;
   }
 }
 
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
 function quoteForLog(value) {
   const text = String(value);
   return /\s/.test(text) ? `"${text.replace(/"/g, '\\"')}"` : text;
 }
 
+/**
+ * @returns {string}
+ */
 function createNonce() {
   return crypto.randomBytes(16).toString("base64").replace(/[^A-Za-z0-9]/g, "");
 }
 
+/**
+ * @param {string} child
+ * @param {string} parent
+ * @returns {boolean}
+ */
 function isInsideOrEqualPath(child, parent) {
   const relative = path.relative(path.resolve(parent), path.resolve(child));
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
 function toPosixPath(value) {
   return String(value).replace(/[\\/]+/g, "/");
 }

@@ -31,6 +31,11 @@ const REQUIRED_TEST_MODULES = [
   "extensionUtils",
 ];
 
+const TYPECHECKED_MODULES = [
+  "extensionCache.js",
+  "extensionUtils.js",
+];
+
 function main() {
   const { failures } = runAudit();
   if (failures.length) {
@@ -62,6 +67,7 @@ function runAudit(options = {}) {
   checkWebviewSafety(moduleTexts, failures);
   checkModuleBudgets(extensionDir, modules, failures);
   checkModuleTests(extensionDir, failures);
+  checkTypecheckConfig(extensionDir, packageJson, moduleTexts, failures);
   checkVscodeIgnore(extensionDir, failures);
 
   return { failures };
@@ -76,12 +82,21 @@ function listExtensionModules(extensionDir = EXTENSION_DIR) {
 function checkPackageScripts(packageJson, modules, failures) {
   const scripts = packageJson.scripts || {};
   const checkScript = String(scripts.check || "");
-  if (!checkScript.includes("../../tools/vscode_extension_static_audit.js")) {
-    failures.push("package.json scripts.check must run tools/vscode_extension_static_audit.js");
+  const syntaxScript = String(scripts["check:syntax"] || "");
+  const typecheckScript = String(scripts["check:types"] || "");
+  const staticScript = String(scripts["check:static"] || "");
+  if (checkScript !== "npm run check:syntax && npm run check:types && npm run check:static") {
+    failures.push("package.json scripts.check must run syntax, type, and static extension checks in order");
+  }
+  if (typecheckScript !== "tsc -p tsconfig.json --noEmit") {
+    failures.push("package.json scripts.check:types must run tsc -p tsconfig.json --noEmit");
+  }
+  if (staticScript !== "node ../../tools/vscode_extension_static_audit.js") {
+    failures.push("package.json scripts.check:static must run tools/vscode_extension_static_audit.js");
   }
   for (const moduleName of modules) {
-    if (!checkScript.includes(`node --check ${moduleName}`)) {
-      failures.push(`package.json scripts.check must syntax-check ${moduleName}`);
+    if (!syntaxScript.includes(`node --check ${moduleName}`)) {
+      failures.push(`package.json scripts.check:syntax must syntax-check ${moduleName}`);
     }
   }
   if (String(scripts["test:unit"] || "") !== "node --test test/*.test.js") {
@@ -237,6 +252,44 @@ function checkModuleTests(extensionDir, failures) {
   }
 }
 
+function checkTypecheckConfig(extensionDir, packageJson, moduleTexts, failures) {
+  const tsconfigPath = path.join(extensionDir, "tsconfig.json");
+  if (!fs.existsSync(tsconfigPath)) {
+    failures.push("packages/vscode-extension/tsconfig.json must exist for checked-JS type validation");
+    return;
+  }
+
+  const tsconfig = readJson(tsconfigPath);
+  const compilerOptions = tsconfig.compilerOptions || {};
+  if (compilerOptions.allowJs !== true) {
+    failures.push("tsconfig.json must enable allowJs so extension JavaScript can be type-checked");
+  }
+  if (compilerOptions.noEmit !== true) {
+    failures.push("tsconfig.json must set noEmit so type checks never write build output");
+  }
+  if (!Array.isArray(compilerOptions.types) || !compilerOptions.types.includes("node") || !compilerOptions.types.includes("vscode")) {
+    failures.push("tsconfig.json must include node and vscode ambient types");
+  }
+
+  const include = Array.isArray(tsconfig.include) ? tsconfig.include : [];
+  for (const moduleName of TYPECHECKED_MODULES) {
+    if (!include.includes(moduleName)) {
+      failures.push(`tsconfig.json must include ${moduleName}`);
+    }
+    const text = moduleTexts[moduleName] || "";
+    if (!text.startsWith("// @ts-check")) {
+      failures.push(`${moduleName} must opt into checked JavaScript with // @ts-check`);
+    }
+  }
+
+  const devDependencies = packageJson.devDependencies || {};
+  for (const dependency of ["typescript", "@types/node", "@types/vscode"]) {
+    if (!devDependencies[dependency]) {
+      failures.push(`package.json devDependencies must include ${dependency} for extension type checks`);
+    }
+  }
+}
+
 function checkVscodeIgnore(extensionDir, failures) {
   const ignorePath = path.join(extensionDir, ".vscodeignore");
   const text = readText(ignorePath);
@@ -244,6 +297,7 @@ function checkVscodeIgnore(extensionDir, failures) {
     "node_modules/**",
     ".vscode-test/**",
     "test/**",
+    "tsconfig.json",
     "*.vsix",
   ]) {
     if (!text.includes(pattern)) {
@@ -270,6 +324,7 @@ if (require.main === module) {
 
 module.exports = {
   checkForbiddenPatterns,
+  checkTypecheckConfig,
   listExtensionModules,
   runAudit,
 };

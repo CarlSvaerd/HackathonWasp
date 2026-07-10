@@ -41,6 +41,8 @@ npm run check
 npm test
 ```
 
+`npm run check` is intentionally split into three gates: `check:syntax` validates every packaged extension module with `node --check`, `check:types` runs checked-JavaScript type validation through `tsc`, and `check:static` runs the repository-specific extension audit for command parity, Workspace Trust restrictions, webview/process safety, module budgets, focused unit coverage, package hygiene, and VSIX version references.
+
 For one-command local confidence when dependencies are already installed:
 
 ```bash
@@ -74,7 +76,8 @@ The hygiene audit fails if these show up as tracked files.
 
 - [ ] `python tools/repo_hygiene_audit.py` passes.
 - [ ] `python -m pytest` passes.
-- [ ] `npm run check` and `npm test` pass in `packages/vscode-extension`.
+- [ ] `npm run check`, including syntax, type, and static extension gates, passes in `packages/vscode-extension`.
+- [ ] `npm test` passes in `packages/vscode-extension`.
 - [ ] User-facing behavior has tests or a documented manual verification path.
 - [ ] Documentation and release notes are updated when commands, settings, reports, or package filenames change.
 - [ ] No secrets, local paths, generated caches, or local build outputs are included.
