@@ -820,6 +820,13 @@ code,
   gap: 8px;
 }
 
+.test-framework {
+  width: fit-content;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.78rem;
+}
+
 .support-chip {
   display: inline-flex;
   width: fit-content;
@@ -898,6 +905,35 @@ code,
   color: var(--muted);
   line-height: 1.45;
   font-size: 0.92rem;
+}
+
+.risk-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.risk-tag {
+  display: inline-flex;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: rgba(98, 180, 255, 0.12);
+  color: var(--ink);
+  border: 1px solid rgba(112, 192, 255, 0.16);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.76rem;
+}
+
+.recommendation-copy {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(78, 166, 255, 0.1), rgba(7, 18, 35, 0.9));
+  border: 1px solid rgba(112, 192, 255, 0.12);
+  color: var(--ink);
+  line-height: 1.45;
+  font-size: 0.9rem;
 }
 
 .chip-passed,

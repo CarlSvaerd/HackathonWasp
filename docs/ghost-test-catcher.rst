@@ -1,0 +1,202 @@
+Ghost Test Catcher
+==================
+
+Ghost Test Catcher is a trust checker for AI-generated Python tests. It checks
+whether tests are grounded in source files, whether they execute in an isolated
+Python test workspace, and which files provide the strongest evidence for the
+result.
+
+Product Surfaces
+----------------
+
+The same Python engine powers three surfaces:
+
+* the FastAPI browser demo
+* the ``ghost-test-catcher`` CLI
+* the VS Code extension in ``packages/vscode-extension``
+
+CLI
+---
+
+Analyze an existing Python test file:
+
+.. code-block:: bash
+
+   ghost-test-catcher analyze \
+     --repo . \
+     --tests tests/test_auth.py \
+     --source src \
+     --format pretty
+
+JSON output is intended for editor integrations and CI:
+
+.. code-block:: bash
+
+   ghost-test-catcher analyze \
+     --repo . \
+     --tests tests/test_auth.py \
+     --source src \
+     --format json
+
+Containerized execution is available for existing-test analysis when Docker is
+installed. Build the included pytest runner image first:
+
+.. code-block:: bash
+
+   docker build -t ghost-test-catcher-runner:latest docker/ghost-test-catcher-runner
+   ghost-test-catcher analyze \
+     --repo . \
+     --tests tests/test_auth.py \
+     --source src \
+     --execution-backend docker \
+     --docker-image ghost-test-catcher-runner:latest \
+     --format pretty
+
+Calibration
+-----------
+
+Run the built-in calibration cases before release or CI gating changes:
+
+.. code-block:: bash
+
+   ghost-test-catcher calibrate --format pretty
+
+The calibration suite includes grounded, missing-symbol, and invented-workflow
+cases so regressions are visible without calling an LLM.
+
+CI Gate
+-------
+
+Use the CI command when Ghost Test Catcher should act as a pull-request or
+release gate:
+
+.. code-block:: bash
+
+   ghost-test-catcher ci \
+     --repo . \
+     --tests tests/test_auth.py \
+     --source src \
+     --no-execution \
+     --summary ghost-test-catcher-summary.md \
+     --output ghost-test-catcher-report.json \
+     --format json \
+     --fail-on ghost_risk
+
+``--fail-on ghost_risk`` fails only high-risk results. ``--fail-on
+needs_review`` fails any result that is not fully reliable. ``--fail-on
+never`` keeps the command informational while still writing reports.
+
+VS Code
+-------
+
+The extension provides:
+
+* ``Ghost Test Catcher: Setup``
+* ``Ghost Test Catcher: Analyze Current Test File``
+* ``Ghost Test Catcher: Analyze Changed Test Files``
+* ``Ghost Test Catcher: Analyze Selected Files or Folders``
+* ``Ghost Test Catcher: Run Doctor``
+* inline diagnostics on pytest-style functions and ``unittest.TestCase`` methods
+* CodeLens verdicts
+* native VS Code Testing panel discovery for pytest-style functions and ``unittest.TestCase`` methods
+* an ``Analyze with Ghost Test Catcher`` Testing panel run profile
+* a filterable report panel with reliability, ETV, framework, execution status, risk categories, recommendations, evidence, and missing symbols
+* persistent workspace report caching with file fingerprint invalidation
+* Quick Fix actions for opening evidence files, copying missing symbols, and rerunning static analysis
+* a GitHub Actions workflow generator for ``ghost-test-catcher ci``
+* optional Docker-backed execution
+* smart source context that resolves local imports from the active test before broader configured source folders
+* nested Python project root detection when VS Code is opened at a parent folder
+* a Doctor report for Python path, module importability, CLI config, discovered source paths, and discovered test paths
+* cancellable analysis and Doctor runs with timeout-backed Python process termination
+* a ``Ghost Test Catcher`` output channel for CLI stderr and failure details
+* limited VS Code Workspace Trust support that offers static analysis instead of test execution in untrusted workspaces
+
+Run ``Ghost Test Catcher: Setup`` first in a new workspace. Setup detects the
+configured Python executable, validates the public ``ghost_test_catcher.cli``
+module, offers an install path when the CLI is missing, writes workspace
+settings for local/static/Docker execution, verifies Docker when selected, and
+opens Doctor.
+
+Package the local extension:
+
+.. code-block:: bash
+
+   cd packages/vscode-extension
+   npm install --ignore-scripts
+   npm run check
+   npm run test:unit
+   npm run test:integration
+   npm run package
+
+The integration test command uses ``@vscode/test-electron`` to launch an
+Extension Development Host with the fixture Python workspace. It activates the
+extension, runs Doctor, analyzes the active test file, verifies Ghost Test
+Catcher diagnostics, and refreshes the Testing panel. Set
+``GHOST_TEST_CATCHER_TEST_PYTHON`` when the desired Python executable is not
+named ``python``.
+
+Release Notes
+-------------
+
+The extension package contains:
+
+* ``package.json`` Marketplace metadata
+* ``media/icon.png`` as a non-SVG extension icon
+* ``CHANGELOG.md`` for release history
+* ``.vscodeignore`` rules that exclude development-only files
+
+The VS Code publishing tool packages local extensions into VSIX files and can
+publish them to Marketplace. The official VS Code documentation warns that
+Marketplace publishing does not accept SVG extension icons, so the project
+ships a generated PNG icon instead.
+
+Configuration
+-------------
+
+Configuration can live in ``pyproject.toml``:
+
+.. code-block:: toml
+
+   [tool.ghost-test-catcher]
+   source_paths = ["src"]
+   test_paths = ["tests"]
+   test_mode = "mixed"
+   model = "gpt-4o-mini"
+   max_files = 80
+   max_chars_per_file = 24000
+   max_total_chars = 240000
+   execute_tests = true
+   execution_backend = "local"
+   docker_image = "ghost-test-catcher-runner:latest"
+
+Safety
+------
+
+When execution is enabled, Ghost Test Catcher copies selected tests and source
+files into a temporary directory and runs the pytest runner there with plugin
+autoloading disabled. Pytest is used as the execution engine because it can
+collect both pytest-style functions and ``unittest.TestCase`` methods. This
+avoids modifying the workspace during analysis, but it still executes Python
+code. Keep confirmation enabled for untrusted generated tests.
+
+The VS Code extension declares limited untrusted-workspace support. When
+``ghostTestCatcher.requireWorkspaceTrustForExecution`` is enabled, test
+execution is blocked in untrusted workspaces and the extension offers static
+grounding analysis instead. The extension also restricts executable workspace
+settings in untrusted workspaces: ``ghostTestCatcher.pythonPath``,
+``ghostTestCatcher.executionBackend``, and ``ghostTestCatcher.dockerImage``.
+In untrusted workspaces, the extension does not prepend the workspace root or
+``src`` directory to ``PYTHONPATH``, so the CLI must be installed in the
+configured Python environment. Report webviews disable scripts, deny local
+resource roots, and include a restrictive Content Security Policy.
+
+The Testing panel integration uses the same CLI analyzer as the command
+palette commands. Grounded and executed tests appear as passed, unsupported or
+borderline tests appear as failed with a review message, and grounded tests
+with execution disabled appear as skipped.
+
+The Python package exposes a language adapter boundary in
+``llmSHAP.ghost.adapters``. The active adapter is ``PythonAdapter``; future
+JavaScript or TypeScript support should add a new adapter for path detection,
+parsing, execution, grounding extraction, and result normalization.

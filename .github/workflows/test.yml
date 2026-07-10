@@ -11,19 +11,20 @@ jobs:
     name: Run pytest
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: [3.11, 3.12, 3.13]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Cache pip
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
@@ -37,3 +38,125 @@ jobs:
 
       - name: Run tests
         run: pytest --maxfail=1 --disable-warnings -q
+
+      - name: Run Ghost Test Catcher calibration
+        run: python -m ghost_test_catcher.cli calibrate --format pretty
+
+      - name: Smoke test Ghost Test Catcher CLI
+        run: |
+          python -m ghost_test_catcher.cli analyze \
+            --repo . \
+            --tests tests/test_webapp_execution.py \
+            --source src \
+            --no-execution \
+            --format json
+
+      - name: Run Ghost Test Catcher CI gate
+        run: |
+          python -m ghost_test_catcher.cli ci \
+            --repo . \
+            --tests tests/test_webapp_execution.py \
+            --source src \
+            --no-execution \
+            --summary ghost-test-catcher-summary.md \
+            --output ghost-test-catcher-report.json \
+            --format json \
+            --fail-on ghost_risk
+
+      - name: Publish Ghost Test Catcher step summary
+        run: cat ghost-test-catcher-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Ghost Test Catcher report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghost-test-catcher-report-${{ matrix.python-version }}
+          path: |
+            ghost-test-catcher-summary.md
+            ghost-test-catcher-report.json
+
+  vscode-extension:
+    name: Check VS Code extension
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install extension dependencies
+        working-directory: packages/vscode-extension
+        run: npm install --ignore-scripts
+
+      - name: Check extension JavaScript
+        working-directory: packages/vscode-extension
+        run: npm run check
+
+      - name: Run extension unit tests
+        working-directory: packages/vscode-extension
+        run: npm run test:unit
+
+      - name: Package extension
+        working-directory: packages/vscode-extension
+        run: npx vsce package --no-dependencies --out ghost-test-catcher-0.1.0.vsix
+
+      - name: Upload VS Code extension VSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghost-test-catcher-vsix
+          path: packages/vscode-extension/ghost-test-catcher-0.1.0.vsix
+
+  vscode-extension-integration:
+    name: VS Code integration (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # VS Code Electron extension tests are more reliable on the Intel macOS
+        # runner than on the floating arm64 macos-latest image.
+        os: [ubuntu-latest, windows-latest, macos-15-intel]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Ghost Test Catcher CLI
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[ghost]"
+
+      - name: Smoke test public CLI module
+        run: python -m ghost_test_catcher.cli doctor --repo .
+
+      - name: Resolve integration Python executable
+        if: runner.os != 'Windows'
+        run: echo "GHOST_TEST_CATCHER_TEST_PYTHON=$(python -c 'import sys; print(sys.executable)')" >> "$GITHUB_ENV"
+
+      - name: Resolve integration Python executable
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $pythonPath = python -c "import sys; print(sys.executable)"
+          "GHOST_TEST_CATCHER_TEST_PYTHON=$pythonPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Print integration environment
+        run: python -c "import os, sys; print('python=' + sys.executable); print('GHOST_TEST_CATCHER_TEST_PYTHON=' + os.environ.get('GHOST_TEST_CATCHER_TEST_PYTHON', ''))"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install extension dependencies
+        working-directory: packages/vscode-extension
+        run: npm install --ignore-scripts
+
+      - name: Run VS Code integration tests
+        working-directory: packages/vscode-extension
+        run: npm run test:integration:ci

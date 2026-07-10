@@ -12,14 +12,22 @@ PORT ?= 8000
 HOST ?= 127.0.0.1
 IMAGE_NAME ?= ghost-test-catcher
 WORKSPACE_PYTHON ?= /Users/carlhyllen/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3
+TESTS ?= tests/test_webapp_execution.py
+SOURCE ?= src
 
-.PHONY: help venv install install-dev explain explain-self web serve docker-build docker-run clean
+.PHONY: help venv install install-dev ghost ghost-ci calibrate extension-icon extension-check extension-package explain explain-self web serve docker-build docker-run clean
 
 help:
 	@echo "Available targets:"
 	@echo "  make venv            Create a local virtual environment in $(VENV_DIR)"
 	@echo "  make install         Install CLI and web app dependencies"
 	@echo "  make install-dev     Install development dependencies too"
+	@echo "  make ghost           Analyze pytest files with Ghost Test Catcher"
+	@echo "  make ghost-ci        Run the Ghost Test Catcher CI gate"
+	@echo "  make calibrate       Run Ghost Test Catcher calibration cases"
+	@echo "  make extension-icon  Regenerate the VS Code extension icon"
+	@echo "  make extension-check Check and package the VS Code extension"
+	@echo "  make extension-package Build the local VSIX extension package"
 	@echo "  make explain         Run the codebase RAG explainer"
 	@echo "  make explain-self    Run the acceptance example against this repo"
 	@echo "  make web             Start the Ghost Test Catcher web app"
@@ -30,6 +38,7 @@ help:
 	@echo ""
 	@echo "Runtime variables:"
 	@echo "  REPO=/path/to/repo"
+	@echo "  TESTS=tests/test_file.py SOURCE=src"
 	@echo "  QUESTION='Where is authentication handled?'"
 	@echo "  TOP_K=6 MODEL=gpt-4o-mini OUTPUT=result.json PORT=8000 HOST=127.0.0.1"
 	@echo "  PYTHON=/path/to/python3.11"
@@ -50,6 +59,38 @@ install: venv
 install-dev: venv
 	$(PIP) install --upgrade pip
 	$(PIP) install -e ".[codebase,webapp,dev]"
+
+ghost:
+	@test -x "$(VENV_PYTHON)" || (echo "Virtualenv missing. Run 'make install' first." && exit 1)
+	$(VENV_PYTHON) -m llmSHAP.ghost.cli analyze \
+		--repo "." \
+		--tests "$(TESTS)" \
+		--source "$(SOURCE)" \
+		--format pretty
+
+ghost-ci:
+	@test -x "$(VENV_PYTHON)" || (echo "Virtualenv missing. Run 'make install' first." && exit 1)
+	$(VENV_PYTHON) -m llmSHAP.ghost.cli ci \
+		--repo "." \
+		--tests "$(TESTS)" \
+		--source "$(SOURCE)" \
+		--summary ghost-test-catcher-summary.md \
+		--output ghost-test-catcher-report.json \
+		--format json \
+		--fail-on ghost_risk
+
+calibrate:
+	@test -x "$(VENV_PYTHON)" || (echo "Virtualenv missing. Run 'make install' first." && exit 1)
+	$(VENV_PYTHON) -m llmSHAP.ghost.cli calibrate --format pretty
+
+extension-icon:
+	$(PYTHON) tools/generate_vscode_extension_icon.py
+
+extension-check:
+	cd packages/vscode-extension && npm install --ignore-scripts && npm run check && npm test && npm run package
+
+extension-package:
+	cd packages/vscode-extension && npm run package
 
 explain:
 	@test -x "$(VENV_PYTHON)" || (echo "Virtualenv missing. Run 'make install' first." && exit 1)
@@ -80,5 +121,5 @@ docker-run:
 	docker run --rm -p "$(PORT):8000" "$(IMAGE_NAME)"
 
 clean:
-	rm -rf "$(VENV_DIR)" .pytest_cache result.json
+	rm -rf "$(VENV_DIR)" .pytest_cache result.json ghost-test-catcher-summary.md ghost-test-catcher-report.json
 	find . -type d -name "__pycache__" -prune -exec rm -rf {} +

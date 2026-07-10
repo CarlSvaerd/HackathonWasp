@@ -7,13 +7,25 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from llmSHAP.ghost.analysis import generate_and_check
 from llmSHAP.llm.openai import OpenAIInterface
-from llmSHAP.webapp.analysis import analyze_uploaded_files, prepare_uploaded_files
+from llmSHAP.webapp.analysis import prepare_uploaded_files
 
 
 app = FastAPI(title="Ghost Test Catcher")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _find_repo_root() -> Path:
+    module_path = Path(__file__).resolve()
+    candidates = [Path.cwd().resolve(), *Path.cwd().resolve().parents, *module_path.parents]
+    for candidate in candidates:
+        if (candidate / "demo" / "allofem").is_dir() and (candidate / "demo" / "ghost_risk_sample").is_dir():
+            return candidate
+    return module_path.parents[3]
+
+
+REPO_ROOT = _find_repo_root()
 
 
 @dataclass(frozen=True)
@@ -51,15 +63,15 @@ DEMO_PRESETS = {
         test_mode="e2e",
         directory=REPO_ROOT / "demo" / "ghost_risk_sample",
         prompt_override=(
-            "Generate runnable pytest end-to-end tests for a full incident management workflow built around these files. "
+            "Generate runnable Python end-to-end tests for a full incident management workflow built around these files. "
             "Cover alert ingestion, dashboard visibility, on-call paging, operator acknowledgement, notification delivery, "
             "and resolution history in realistic multi-step user-facing flows. "
-            "Return only Python code in a single ```python``` block with pytest-style test functions."
+            "Return only Python code in a single ```python``` block."
         ),
         instructions_override=(
             "You are in stress-test mode for Ghost Test Catcher. "
             "Generate ambitious product-level tests inferred from the uploaded files and surrounding intent, even when some workflows must be guessed. "
-            "Return only pytest code."
+            "Return only Python test code."
         ),
     ),
 }
@@ -113,7 +125,7 @@ async def analyze(
         payloads = [(upload.filename or "uploaded-file", await upload.read()) for upload in files]
         prepared_files = prepare_uploaded_files(payloads)
         llm = OpenAIInterface(model_name=model, api_key=api_key, max_tokens=700)
-        result = analyze_uploaded_files(
+        result = generate_and_check(
             files=prepared_files,
             test_mode=test_mode,
             llm=llm,

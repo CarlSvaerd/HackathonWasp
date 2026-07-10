@@ -5,6 +5,21 @@ playground.py
 *.jsonl
 *logs
 
+# Accidental nested repo/cache artifacts
+.pnpm-store/
+HackathonWasp
+
+# VS Code extension local artifacts
+packages/vscode-extension/node_modules/
+packages/vscode-extension/*.vsix
+packages/vscode-extension/.vscode-test/
+packages/vscode-extension/pnpm-lock.yaml
+packages/vscode-extension/pnpm-workspace.yaml
+
+# Ghost Test Catcher local CI reports
+ghost-test-catcher-summary.md
+ghost-test-catcher-report.json
+
 
 # Logs
 /logs

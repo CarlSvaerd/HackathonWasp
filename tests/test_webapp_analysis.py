@@ -1,6 +1,7 @@
 from llmSHAP.webapp.analysis import (
     UploadedContextFile,
     _effective_test_value,
+    _select_sampler,
     analyze_uploaded_files,
     prepare_uploaded_files,
 )
@@ -75,6 +76,10 @@ def test_login_rejects_invalid_credentials():
     assert "Available Python API map:" in fake_llm.prompt[1]["content"]
     assert "module: src.auth (src/auth.py)" in fake_llm.prompt[1]["content"]
     assert result["generated_tests"]["test_count"] == 2
+    assert result["cost_estimate"]["llm_call_path"] == "optional_generate_and_check"
+    assert result["cost_estimate"]["llm_calls"] == 4
+    assert result["cost_estimate"]["estimated_input_tokens"] > 0
+    assert result["cost_estimate"]["estimated_output_token_ceiling"] is None
     assert "verification" in result
     assert result["verification"]["total_claims"] >= 1
     assert result["execution"]["status"] == "passed"
@@ -116,3 +121,45 @@ def test_effective_test_value_scores_keepers_and_salvageable_tests() -> None:
         "salvageable": 2,
         "risky": 1,
     }
+
+
+def test_generation_sampler_limits_llm_call_growth_after_two_files() -> None:
+    small_sampler, small_name = _select_sampler(2)
+    medium_sampler, medium_name = _select_sampler(3)
+    larger_sampler, larger_name = _select_sampler(4)
+
+    assert type(small_sampler).__name__ == "FullEnumerationSampler"
+    assert small_name == "full_enumeration"
+    assert type(medium_sampler).__name__ == "CounterfactualSampler"
+    assert medium_name == "counterfactual"
+    assert type(larger_sampler).__name__ == "CounterfactualSampler"
+    assert larger_name == "counterfactual"
+
+
+def test_generation_cost_estimate_uses_counterfactual_call_count_for_four_files() -> None:
+    class FakeLLM:
+        max_tokens = 700
+
+        def generate(self, prompt, tools=None, images=None):
+            return """```python
+def test_generated_placeholder():
+    assert True
+```"""
+
+    files = [
+        UploadedContextFile(
+            path=f"src/module_{index}.py",
+            content=f"def feature_{index}():\n    return {index}\n",
+            size_bytes=32,
+            line_count=2,
+            is_test_file=False,
+        )
+        for index in range(4)
+    ]
+
+    result = analyze_uploaded_files(files=files, test_mode="unit", llm=FakeLLM())
+
+    assert result["sampler"] == "counterfactual"
+    assert result["cost_estimate"]["llm_calls"] == 6
+    assert result["cost_estimate"]["estimated_input_tokens"] > 0
+    assert result["cost_estimate"]["estimated_output_token_ceiling"] == 4200

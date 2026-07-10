@@ -1,0 +1,329 @@
+{
+  "name": "ghost-test-catcher",
+  "displayName": "Ghost Test Catcher",
+  "description": "Detect whether AI-generated Python tests are grounded in your actual source code.",
+  "version": "0.2.2",
+  "publisher": "carl-svaerd",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "preview": true,
+  "pricing": "Free",
+  "qna": "marketplace",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CarlSvaerd/HackathonWasp"
+  },
+  "homepage": "https://github.com/CarlSvaerd/HackathonWasp#ghost-test-catcher",
+  "bugs": {
+    "url": "https://github.com/CarlSvaerd/HackathonWasp/issues"
+  },
+  "galleryBanner": {
+    "color": "#111827",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.88.0"
+  },
+  "categories": [
+    "Testing",
+    "Linters"
+  ],
+  "keywords": [
+    "pytest",
+    "unittest",
+    "testing",
+    "ai-generated tests",
+    "test verification",
+    "ghost tests",
+    "quality",
+    "ci",
+    "code review"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Ghost Test Catcher can run Doctor and static analysis in untrusted workspaces from an installed CLI. Test execution and executable settings are restricted unless the workspace is trusted.",
+      "restrictedConfigurations": [
+        "ghostTestCatcher.executeTests",
+        "ghostTestCatcher.pythonPath",
+        "ghostTestCatcher.executionBackend",
+        "ghostTestCatcher.dockerImage"
+      ]
+    }
+  },
+  "activationEvents": [
+    "onLanguage:python",
+    "onCommand:ghostTestCatcher.analyzeCurrentTest",
+    "onCommand:ghostTestCatcher.analyzeChangedTests",
+    "onCommand:ghostTestCatcher.analyzeSelectedFiles",
+    "onCommand:ghostTestCatcher.setup",
+    "onCommand:ghostTestCatcher.openSetupGuide",
+    "onCommand:ghostTestCatcher.runDoctor",
+    "onCommand:ghostTestCatcher.openLastReport",
+    "onCommand:ghostTestCatcher.refreshTestExplorer",
+    "onCommand:ghostTestCatcher.clearAnalysisCache",
+    "onCommand:ghostTestCatcher.copyReportSummary",
+    "onCommand:ghostTestCatcher.addGitHubActionsGate"
+  ],
+  "main": "./extension.js",
+  "scripts": {
+    "check": "node --check extension.js && node --check extensionCore.js",
+    "test": "node --test test/*.test.js",
+    "test:unit": "node --test test/*.test.js",
+    "test:integration": "node test/integration/runTest.js",
+    "test:integration:ci": "node test/integration/runCi.js",
+    "test:all": "node --test test/*.test.js && node test/integration/runTest.js",
+    "package": "vsce package --no-dependencies --out ghost-test-catcher-0.2.2.vsix"
+  },
+  "devDependencies": {
+    "@vscode/test-electron": "^2.4.1",
+    "@vscode/vsce": "^3.6.0"
+  },
+  "contributes": {
+    "walkthroughs": [
+      {
+        "id": "ghostTestCatcher.gettingStarted",
+        "title": "Get Started with Ghost Test Catcher",
+        "description": "Verify AI-generated Python tests against real source evidence before you trust them.",
+        "steps": [
+          {
+            "id": "ghostTestCatcher.setup",
+            "title": "Set up Python and the CLI",
+            "description": "Choose local, static-only, or Docker-backed analysis, then let Doctor confirm the workspace is ready.",
+            "media": {
+              "markdown": "media/walkthrough-setup.md"
+            },
+            "completionEvents": [
+              "onCommand:ghostTestCatcher.setup"
+            ]
+          },
+          {
+            "id": "ghostTestCatcher.review",
+            "title": "Review a Python test file",
+            "description": "Analyze a selected test file and inspect diagnostics, CodeLens verdicts, and the report panel.",
+            "media": {
+              "markdown": "media/walkthrough-review.md"
+            },
+            "completionEvents": [
+              "onCommand:ghostTestCatcher.analyzeCurrentTest",
+              "onCommand:ghostTestCatcher.analyzeSelectedFiles"
+            ]
+          },
+          {
+            "id": "ghostTestCatcher.ci",
+            "title": "Add the CI gate",
+            "description": "Generate a GitHub Actions workflow so generated-test review can run in pull requests.",
+            "media": {
+              "markdown": "media/walkthrough-ci.md"
+            },
+            "completionEvents": [
+              "onCommand:ghostTestCatcher.addGitHubActionsGate"
+            ]
+          }
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "ghostTestCatcher.analyzeCurrentTest",
+        "title": "Ghost Test Catcher: Analyze Current Test File"
+      },
+      {
+        "command": "ghostTestCatcher.analyzeChangedTests",
+        "title": "Ghost Test Catcher: Analyze Changed Test Files"
+      },
+      {
+        "command": "ghostTestCatcher.analyzeSelectedFiles",
+        "title": "Ghost Test Catcher: Analyze Selected Files or Folders"
+      },
+      {
+        "command": "ghostTestCatcher.setup",
+        "title": "Ghost Test Catcher: Setup"
+      },
+      {
+        "command": "ghostTestCatcher.openSetupGuide",
+        "title": "Ghost Test Catcher: Open Setup Guide"
+      },
+      {
+        "command": "ghostTestCatcher.runDoctor",
+        "title": "Ghost Test Catcher: Run Doctor"
+      },
+      {
+        "command": "ghostTestCatcher.openLastReport",
+        "title": "Ghost Test Catcher: Open Last Report"
+      },
+      {
+        "command": "ghostTestCatcher.refreshTestExplorer",
+        "title": "Ghost Test Catcher: Refresh Testing Panel"
+      },
+      {
+        "command": "ghostTestCatcher.clearAnalysisCache",
+        "title": "Ghost Test Catcher: Clear Analysis Cache"
+      },
+      {
+        "command": "ghostTestCatcher.copyReportSummary",
+        "title": "Ghost Test Catcher: Copy Report Summary"
+      },
+      {
+        "command": "ghostTestCatcher.addGitHubActionsGate",
+        "title": "Ghost Test Catcher: Add GitHub Actions Gate"
+      }
+    ],
+    "configuration": {
+      "title": "Ghost Test Catcher",
+      "properties": {
+        "ghostTestCatcher.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Python executable used to run the Ghost Test Catcher CLI."
+        },
+        "ghostTestCatcher.setupNudgeEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a one-time setup prompt in workspaces that contain Python tests."
+        },
+        "ghostTestCatcher.sourcePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "src"
+          ],
+          "description": "Source/context paths passed to the analyzer."
+        },
+        "ghostTestCatcher.smartSourceContext": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically include local source files imported by the selected test file before the configured source paths."
+        },
+        "ghostTestCatcher.executeTests": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run the selected Python tests in an isolated temporary workspace during analysis."
+        },
+        "ghostTestCatcher.requireWorkspaceTrustForExecution": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require a trusted VS Code workspace before Ghost Test Catcher executes selected Python tests."
+        },
+        "ghostTestCatcher.confirmExecution": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ask for confirmation before executing generated or selected tests."
+        },
+        "ghostTestCatcher.executionBackend": {
+          "type": "string",
+          "enum": [
+            "local",
+            "docker"
+          ],
+          "default": "local",
+          "description": "Execution backend for selected Python tests. Docker runs the temporary test workspace in a container image that must include Python and pytest."
+        },
+        "ghostTestCatcher.dockerImage": {
+          "type": "string",
+          "default": "ghost-test-catcher-runner:latest",
+          "description": "Docker image used when ghostTestCatcher.executionBackend is set to docker."
+        },
+        "ghostTestCatcher.testMode": {
+          "type": "string",
+          "enum": [
+            "unit",
+            "integration",
+            "e2e",
+            "mixed"
+          ],
+          "default": "mixed",
+          "description": "Expected style of tests being analyzed."
+        },
+        "ghostTestCatcher.maxFiles": {
+          "type": "number",
+          "default": 80,
+          "description": "Maximum source/context files read by the analyzer."
+        },
+        "ghostTestCatcher.analysisCacheEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Cache valid Ghost Test Catcher reports when file fingerprints match. Use ghostTestCatcher.persistAnalysisCache to control whether cached report content survives VS Code reloads."
+        },
+        "ghostTestCatcher.persistAnalysisCache": {
+          "type": "boolean",
+          "default": true,
+          "description": "Persist cached report content in VS Code workspace state across reloads. Disable this to keep analysis caching in memory only for the current VS Code session."
+        },
+        "ghostTestCatcher.cacheFingerprintLimit": {
+          "type": "number",
+          "default": 300,
+          "description": "Maximum Python files fingerprinted per analysis result before caching is skipped."
+        },
+        "ghostTestCatcher.testDiscoveryLimit": {
+          "type": "number",
+          "default": 500,
+          "description": "Maximum Python files scanned when populating the VS Code Testing panel."
+        },
+        "ghostTestCatcher.ciFailOn": {
+          "type": "string",
+          "enum": [
+            "ghost_risk",
+            "needs_review",
+            "never"
+          ],
+          "default": "ghost_risk",
+          "description": "Failure policy used by the generated GitHub Actions gate."
+        },
+        "ghostTestCatcher.ciPythonVersion": {
+          "type": "string",
+          "default": "3.11",
+          "description": "Python version used by the generated GitHub Actions gate."
+        },
+        "ghostTestCatcher.ciTestPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "tests"
+          ],
+          "description": "Test paths used by the generated GitHub Actions gate."
+        }
+      }
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "ghostTestCatcher.analyzeCurrentTest",
+          "when": "resourceLangId == python",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "ghostTestCatcher.analyzeSelectedFiles",
+          "when": "resourceLangId == python",
+          "group": "navigation"
+        },
+        {
+          "command": "ghostTestCatcher.runDoctor",
+          "when": "resourceLangId == python",
+          "group": "navigation@2"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "ghostTestCatcher.analyzeSelectedFiles",
+          "when": "resourceLangId == python || explorerResourceIsFolder",
+          "group": "navigation"
+        },
+        {
+          "command": "ghostTestCatcher.runDoctor",
+          "when": "resourceLangId == python || explorerResourceIsFolder",
+          "group": "navigation@2"
+        }
+      ]
+    }
+  }
+}

@@ -39,7 +39,7 @@ function testModeLabel(mode) {
 
 function executionLabel(status) {
   if (status === "passed") return "Runnable";
-  if (status === "failed") return "Fails in pytest";
+  if (status === "failed") return "Fails in test runner";
   if (status === "timeout") return "Timed out";
   if (status === "invalid_test_code") return "Invalid test code";
   if (status === "no_tests_detected" || status === "no_tests_collected") return "No runnable tests";
@@ -61,7 +61,7 @@ function topFailureReason(result) {
 function executionAlert(result) {
   if (result.execution?.status !== "passed") {
     return {
-      kicker: "Pytest failure",
+      kicker: "Test runner failure",
       title: topFailureReason(result) || "The generated tests do not line up cleanly with the uploaded files.",
       copy: result.execution?.message,
     };
@@ -96,6 +96,10 @@ function perTestViewModel(result) {
       groundedStatus: verification?.status || "unsupported",
       groundedConfidence: verification?.confidence || 0,
       missingSymbols: verification?.missing_symbols || [],
+      framework: verification?.framework || "unknown",
+      riskCategories: verification?.risk_categories || [],
+      recommendation: verification?.recommendation || "",
+      assertionCount: verification?.assertion_count || 0,
       evidence: verification?.evidence || null,
       executionStatus: execution.status || "unknown",
     };
@@ -114,7 +118,7 @@ function loadingStageLabel(progress) {
   if (progress < 0.25) return "Preparing uploaded files";
   if (progress < 0.5) return "Generating candidate tests";
   if (progress < 0.75) return "Scoring groundedness and attribution";
-  return "Running pytest and assembling the verdict";
+  return "Running tests and assembling the verdict";
 }
 
 function App() {
@@ -383,7 +387,7 @@ function App() {
                     })
                   ),
                   React.createElement("p", { className: "loading-footnote" },
-                    "This includes generation, grounding checks, llmSHAP attribution, and pytest execution."
+                    "This includes generation, grounding checks, llmSHAP attribution, and isolated Python test execution."
                   )
                 )
               : !result
@@ -456,7 +460,7 @@ function App() {
                       value: String(result.generated_tests.test_count),
                     }),
                     React.createElement(SummaryPill, {
-                      label: "Pytest pass rate",
+                      label: "Test pass rate",
                       value: `${result.execution.passed}/${result.execution.test_count || result.generated_tests.test_count}`,
                     }),
                     React.createElement(SummaryPill, {
@@ -540,7 +544,10 @@ function App() {
                               React.createElement("span", { className: `support-chip support-${item.groundedStatus}` },
                                 supportLabel(item.groundedStatus)
                               ),
-                              React.createElement("strong", null, item.name)
+                              React.createElement("strong", null, item.name),
+                              React.createElement("span", { className: "test-framework" },
+                                `${item.framework} | ${item.assertionCount} assertion${item.assertionCount === 1 ? "" : "s"}`
+                              )
                             ),
                             React.createElement("span", { className: `per-test-chip chip-${item.executionStatus}` },
                               executionLabel(item.executionStatus)
@@ -569,6 +576,17 @@ function App() {
                                   ? `Best evidence: ${item.evidence.path}:${item.evidence.start_line}-${item.evidence.end_line}`
                                   : "No evidence snippet found."
                               )
+                            ),
+                          item.riskCategories.length
+                            ? React.createElement("div", { className: "risk-tag-row" },
+                                item.riskCategories.map((category) =>
+                                  React.createElement("span", { className: "risk-tag", key: `${item.name}-${category}` }, category)
+                                )
+                              )
+                            : null,
+                          item.recommendation
+                            ? React.createElement("p", { className: "recommendation-copy" }, item.recommendation)
+                            : null
                         )
                       )
                     )
@@ -604,7 +622,7 @@ function App() {
                       result.execution.pytest_summary
                         ? React.createElement("pre", { className: "detail-pre code-block code-block-medium" }, result.execution.pytest_summary)
                         : React.createElement("p", { className: "empty-state compact" },
-                            "No pytest summary is available for this run."
+                            "No test runner summary is available for this run."
                           )
                     ),
                   }),
@@ -657,6 +675,16 @@ function App() {
                               ? React.createElement("p", { className: "claim-missing" },
                                   `Missing symbols: ${item.missing_symbols.join(", ")}`
                                 )
+                              : null,
+                            item.risk_categories && item.risk_categories.length
+                              ? React.createElement("div", { className: "risk-tag-row" },
+                                  item.risk_categories.map((category) =>
+                                    React.createElement("span", { className: "risk-tag", key: `${item.claim}-${category}` }, category)
+                                  )
+                                )
+                              : null,
+                            item.recommendation
+                              ? React.createElement("p", { className: "recommendation-copy" }, item.recommendation)
                               : null,
                             item.evidence
                               ? React.createElement("div", { className: "evidence-box" },

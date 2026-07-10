@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
+from itertools import combinations
+import json
+import math
 import os
 from statistics import mean
 import sys
@@ -21,23 +24,27 @@ PROMPT_KEY = "__prompt__"
 API_MAP_KEY = "__api_map__"
 TEST_MODE_PROMPTS = {
     "unit": (
-        "Generate runnable pytest unit tests for the uploaded files. "
+        "Generate runnable Python unit tests for the uploaded files. "
         "Focus on pure function behavior, edge cases, validation rules, and failure paths. "
-        "Return only Python code in a single ```python``` block with pytest-style test functions."
+        "Use pytest-style test functions or unittest.TestCase classes when they fit the codebase. "
+        "Return only Python code in a single ```python``` block."
     ),
     "integration": (
-        "Generate runnable pytest integration tests for the uploaded files. "
+        "Generate runnable Python integration tests for the uploaded files. "
         "Focus on interactions between modules, shared data flow, and cross-file behavior. "
-        "Return only Python code in a single ```python``` block with pytest-style test functions."
+        "Use pytest-style test functions or unittest.TestCase classes when they fit the codebase. "
+        "Return only Python code in a single ```python``` block."
     ),
     "e2e": (
-        "Generate runnable pytest end-to-end style tests for the uploaded files. "
+        "Generate runnable Python end-to-end style tests for the uploaded files. "
         "Focus on realistic user-facing flows, system outcomes, and multi-step behavior that can be inferred from the code. "
-        "Return only Python code in a single ```python``` block with pytest-style test functions."
+        "Use pytest-style test functions or unittest.TestCase classes when they fit the codebase. "
+        "Return only Python code in a single ```python``` block."
     ),
     "mixed": (
-        "Generate a small mixed pack of runnable pytest tests covering unit, integration, and end-to-end style behavior for the uploaded files. "
-        "Return only Python code in a single ```python``` block with pytest-style test functions."
+        "Generate a small mixed pack of runnable Python tests covering unit, integration, and end-to-end style behavior for the uploaded files. "
+        "Use pytest-style test functions or unittest.TestCase classes when they fit the codebase. "
+        "Return only Python code in a single ```python``` block."
     ),
 }
 DEFAULT_INSTRUCTIONS = (
@@ -161,10 +168,17 @@ def analyze_uploaded_files(
 
     data_handler = DataHandler(data, permanent_keys={INSTRUCTIONS_KEY, PROMPT_KEY, API_MAP_KEY})
     sampler, sampler_name = _select_sampler(len(files))
+    prompt_codec = UploadedFilePromptCodec()
+    cost_estimate = _build_generation_cost_estimate(
+        data_handler=data_handler,
+        prompt_codec=prompt_codec,
+        sampler_name=sampler_name,
+        output_token_ceiling_per_call=getattr(llm, "max_tokens", None),
+    )
     attribution = ShapleyAttribution(
         model=llm,
         data_handler=data_handler,
-        prompt_codec=UploadedFilePromptCodec(),
+        prompt_codec=prompt_codec,
         sampler=sampler,
         use_cache=True,
         verbose=False,
@@ -199,11 +213,13 @@ def analyze_uploaded_files(
             "syntax_error": extracted_tests["syntax_error"],
             "test_names": [test_case.name for test_case in extracted_tests["test_cases"]],
             "test_count": len(extracted_tests["test_cases"]),
+            "frameworks": extracted_tests.get("frameworks", ["unknown"]),
         },
         "verification": verification,
         "preflight": preflight,
         "execution": execution,
         "trust_assessment": trust_assessment,
+        "cost_estimate": cost_estimate,
         "files": weighted_files,
         "top_test_files": [item for item in weighted_files if item["is_test_file"]][:3],
     }
@@ -240,7 +256,7 @@ def _build_api_map(files: list[UploadedContextFile]) -> str:
     if not modules:
         return "[no-python-api-map] No Python modules were detected."
 
-    lines = ["Use these exact import paths and symbol names when generating pytest code."]
+    lines = ["Use these exact import paths and symbol names when generating Python test code."]
     for module in sorted(modules, key=lambda item: item["module"]):
         lines.append(f"- module: {module['module']} ({module['path']})")
         lines.append(f"  functions: {', '.join(module['functions']) if module['functions'] else '[none]'}")
@@ -292,9 +308,72 @@ def _python_exports(content: str) -> dict[str, list[str]]:
 
 
 def _select_sampler(file_count: int):
-    if file_count <= 4:
+    if file_count <= 2:
         return FullEnumerationSampler(file_count), "full_enumeration"
     return CounterfactualSampler(), "counterfactual"
+
+
+def _build_generation_cost_estimate(
+    *,
+    data_handler: DataHandler,
+    prompt_codec: UploadedFilePromptCodec,
+    sampler_name: str,
+    output_token_ceiling_per_call: int | None,
+) -> dict:
+    variable_indexes = data_handler.get_keys(exclude_permanent_keys=True)
+    coalitions = _generation_coalitions(variable_indexes, sampler_name)
+    prompt_character_counts = [
+        len(_render_prompt_for_cost(prompt_codec.build_prompt(data_handler, set(coalition))))
+        for coalition in coalitions
+    ]
+    estimated_input_tokens = sum(_approx_token_count(count) for count in prompt_character_counts)
+    llm_calls = len(coalitions)
+    output_ceiling = (
+        int(output_token_ceiling_per_call) * llm_calls
+        if isinstance(output_token_ceiling_per_call, int) and output_token_ceiling_per_call > 0
+        else None
+    )
+    return {
+        "llm_call_path": "optional_generate_and_check",
+        "llm_calls": llm_calls,
+        "estimated_input_tokens": estimated_input_tokens,
+        "estimated_output_tokens": None,
+        "output_token_ceiling_per_call": output_token_ceiling_per_call,
+        "estimated_output_token_ceiling": output_ceiling,
+        "token_estimator": "ceil(rendered_prompt_characters / 4)",
+        "sampler": sampler_name,
+        "coalition_sizes": [len(coalition) for coalition in coalitions],
+        "notes": [
+            "This is a preflight estimate for optional LLM-backed test generation.",
+            "Actual billing depends on the model tokenizer and generated output length.",
+        ],
+    }
+
+
+def _generation_coalitions(variable_indexes: list[int], sampler_name: str) -> list[frozenset[int]]:
+    if sampler_name == "full_enumeration":
+        coalitions = {
+            frozenset(coalition)
+            for size in range(len(variable_indexes) + 1)
+            for coalition in combinations(variable_indexes, size)
+        }
+    elif sampler_name == "counterfactual":
+        coalitions = {frozenset(), frozenset(variable_indexes)}
+        for index in variable_indexes:
+            coalitions.add(frozenset(item for item in variable_indexes if item != index))
+    else:
+        coalitions = {frozenset(variable_indexes)}
+    return sorted(coalitions, key=lambda item: (len(item), sorted(item)))
+
+
+def _render_prompt_for_cost(prompt: object) -> str:
+    if isinstance(prompt, str):
+        return prompt
+    return json.dumps(prompt, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _approx_token_count(character_count: int) -> int:
+    return int(math.ceil(character_count / 4))
 
 
 def _build_weighted_files(files: list[UploadedContextFile], raw_attribution: dict) -> list[dict]:
@@ -465,7 +544,7 @@ def _build_preflight_assessment(extracted_tests: dict, verification: dict, files
 
     available_modules = _available_modules(files)
     stdlib_modules = set(getattr(sys, "stdlib_module_names", set()))
-    allowed_modules = available_modules | stdlib_modules | {"pytest"}
+    allowed_modules = available_modules | stdlib_modules | {"pytest", "unittest"}
     imported_modules = set(extracted_tests.get("module_imports", []))
     missing_imports = sorted(module for module in imported_modules if module not in allowed_modules)
 
@@ -500,11 +579,17 @@ def _available_modules(files: list[UploadedContextFile]) -> set[str]:
         if not normalized.endswith(".py"):
             continue
         module = normalized[:-3].replace("/", ".")
-        modules.add(module)
-        parts = module.split(".")
-        for index in range(1, len(parts)):
-            modules.add(".".join(parts[:index]))
+        _add_module_with_parents(modules, module)
+        if module.startswith("src."):
+            _add_module_with_parents(modules, module.removeprefix("src."))
     return modules
+
+
+def _add_module_with_parents(modules: set[str], module: str) -> None:
+    modules.add(module)
+    parts = module.split(".")
+    for index in range(1, len(parts)):
+        modules.add(".".join(parts[:index]))
 
 
 def _is_test_file(path: str) -> bool:

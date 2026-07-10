@@ -33,6 +33,40 @@ def test_add_returns_sum():
     ]
 
 
+def test_run_generated_tests_passes_for_unittest_testcase_output() -> None:
+    files = [
+        UploadedContextFile(
+            path="calculator.py",
+            content="def add(a, b):\n    return a + b\n",
+            size_bytes=32,
+            line_count=2,
+            is_test_file=False,
+        )
+    ]
+
+    answer = """```python
+import unittest
+from calculator import add
+
+
+class CalculatorTests(unittest.TestCase):
+    def test_add_returns_sum(self):
+        self.assertEqual(add(2, 3), 5)
+```"""
+
+    result = run_generated_tests(answer, files)
+
+    assert result["status"] == "passed"
+    assert result["test_count"] == 1
+    assert result["passed"] >= 1
+    assert result["per_test_results"] == [
+        {
+            "name": "CalculatorTests.test_add_returns_sum",
+            "status": "passed",
+        }
+    ]
+
+
 def test_run_generated_tests_flags_invalid_code() -> None:
     files = [
         UploadedContextFile(

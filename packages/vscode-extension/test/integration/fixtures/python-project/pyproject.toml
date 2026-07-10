@@ -1,0 +1,10 @@
+[project]
+name = "ghost-test-catcher-fixture"
+version = "0.0.0"
+requires-python = ">=3.11"
+
+[tool.ghost-test-catcher]
+source_paths = ["src"]
+test_paths = ["tests"]
+test_mode = "unit"
+execute_tests = false

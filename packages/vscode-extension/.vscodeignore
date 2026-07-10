@@ -1,0 +1,12 @@
+.vscode/**
+.vscode-test/**
+node_modules/**
+out/**
+src/**
+test/**
+pnpm-lock.yaml
+pnpm-workspace.yaml
+.npmrc
+*.vsix
+*.map
+*.log
