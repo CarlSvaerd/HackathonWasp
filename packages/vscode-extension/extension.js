@@ -171,10 +171,24 @@ async function copyReportSummary(explicitReports) {
     return;
   }
 
-  const markdown = core.renderMarkdownReportSummary(reports);
+  const markdown = core.renderMarkdownReportSummary(reports, { workspaceRoot: workspaceRootForReports(reports) });
   await vscode.env.clipboard.writeText(markdown);
-  const testCount = reports.reduce((total, result) => total + core.reportTestNames(result).length, 0);
+  const testCount = core.summarizeTestDecisions(reports).total;
   vscode.window.showInformationMessage(`Copied Ghost Test Catcher summary for ${testCount} test${testCount === 1 ? "" : "s"}.`);
+}
+
+function workspaceRootForReports(reports) {
+  for (const result of reports || []) {
+    const candidate = result?.__testFile || result?.input_test_files?.find((item) => item?.path)?.path;
+    if (!candidate || !path.isAbsolute(candidate)) {
+      continue;
+    }
+    const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(candidate));
+    if (folder) {
+      return folder.uri.fsPath;
+    }
+  }
+  return getActiveWorkspaceFolder()?.uri.fsPath || "";
 }
 
 async function addGitHubActionsGate() {

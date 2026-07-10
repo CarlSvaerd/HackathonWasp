@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.3
+
+- Fixed copied report summaries to display Effective Test Value from `trust_assessment.components.etv_score` instead of a stale legacy field.
+- Reworked copied summaries around a decision-first review block: safe to keep, review recommended, and high-risk ghost tests.
+- Shortened copied report paths to workspace-relative paths when invoked from VS Code.
+- Replaced misleading raw recommendations for grounded passing tests with clearer symbol-signal and action wording that distinguishes context gaps from ghost-test risk.
+- Updated the report panel table wording from `Missing`/`Recommendation` to `Symbol Signal`/`Action`.
+- Updated the VSIX output filename to `ghost-test-catcher-0.2.3.vsix`.
+
 ## 0.2.2
 
 - Added `Ghost Test Catcher: Copy Report Summary`, which copies a Markdown review summary with verdict counts, cost/cache details, per-file results, per-test grounding, missing symbols, evidence locations, execution status, and recommendations.

@@ -516,17 +516,26 @@ function costSummaryText(reports) {
   return `${summary.llmCalls} LLM call${summary.llmCalls === 1 ? "" : "s"}, ~${formatInteger(summary.estimatedInputTokens)} input tokens${outputText}, ${cacheText}`;
 }
 
-function renderMarkdownReportSummary(reports) {
+function renderMarkdownReportSummary(reports, options = {}) {
   const normalizedReports = (reports || []).filter(Boolean);
   const summary = summarizeReports(normalizedReports);
-  const testCount = normalizedReports.reduce((total, result) => total + reportTestNames(result).length, 0);
+  const decisionSummary = summarizeTestDecisions(normalizedReports);
+  const testCount = decisionSummary.total;
   const lines = [
     "## Ghost Test Catcher Summary",
+    "",
+    "### Decision",
+    "",
+    `- Safe to keep: ${decisionSummary.safe}`,
+    `- Review recommended: ${decisionSummary.review}`,
+    `- High-risk ghost tests: ${decisionSummary.highRisk}`,
+    `- Token impact: ${costSummaryText(normalizedReports)}`,
+    "",
+    "### Run",
     "",
     `- Reports analyzed: ${normalizedReports.length}`,
     `- Tests reviewed: ${testCount}`,
     `- Verdicts: ${summary.reliable} reliable, ${summary.needsReview} needs review, ${summary.ghostRisk} ghost test risk`,
-    `- Cost/cache: ${costSummaryText(normalizedReports)}`,
   ];
 
   if (!normalizedReports.length) {
@@ -538,45 +547,42 @@ function renderMarkdownReportSummary(reports) {
     "",
     "### Files",
     "",
-    "| File | Verdict | Tests | ETV | Execution | Cache |",
-    "| --- | --- | ---: | ---: | --- | --- |"
+    "| File | Verdict | Tests | ETV | Decisions | Execution | Cache |",
+    "| --- | --- | ---: | ---: | --- | --- | --- |"
   );
 
   for (const result of normalizedReports) {
     const trust = result.trust_assessment || {};
-    lines.push(`| ${markdownCell(reportDisplayPath(result))} | ${markdownCell(verdictLabel(trust.verdict || "needs_review"))} | ${reportTestNames(result).length} | ${markdownCell(percent(Number(trust.estimated_truth_value || 0)))} | ${markdownCell(executionSummaryText(result))} | ${markdownCell(result.__cacheHit ? "cached" : "fresh")} |`);
+    const reportDecisions = summarizeTestDecisions([result]);
+    const decisions = `${reportDecisions.safe} keep / ${reportDecisions.review} review / ${reportDecisions.highRisk} risk`;
+    lines.push(`| ${markdownCell(reportDisplayPath(result, options))} | ${markdownCell(verdictLabel(trust.verdict || "needs_review"))} | ${reportDecisions.total} | ${markdownCell(percent(effectiveTestValue(result)))} | ${markdownCell(decisions)} | ${markdownCell(executionSummaryText(result))} | ${markdownCell(result.__cacheHit ? "cached" : "fresh")} |`);
   }
 
   lines.push(
     "",
     "### Test Details",
     "",
-    "| Test | File | Grounding | Confidence | Execution | Missing symbols | Evidence | Recommendation |",
-    "| --- | --- | --- | ---: | --- | --- | --- | --- |"
+    "| Test | File | Decision | Grounding | Confidence | Execution | Symbol signal | Evidence | Action |",
+    "| --- | --- | --- | --- | ---: | --- | --- | --- | --- |"
   );
 
   let wroteTestRow = false;
   for (const result of normalizedReports) {
     const checks = mapBy(result.verification?.claim_checks || [], "claim");
     const runs = mapBy(result.execution?.per_test_results || [], "name");
-    const testNames = sortedUnique([
-      ...reportTestNames(result),
-      ...Array.from(checks.keys()),
-      ...Array.from(runs.keys()),
-    ]);
+    const testNames = testNamesForReport(result, checks, runs);
 
     for (const name of testNames) {
       const check = checks.get(name) || {};
       const run = runs.get(name) || {};
-      const missingSymbols = (check.missing_symbols || []).map(markdownInlineCode).join(", ") || "-";
-      const recommendation = check.recommendation || "-";
-      lines.push(`| ${markdownCell(markdownInlineCode(name))} | ${markdownCell(reportDisplayPath(result))} | ${markdownCell(supportLabel(check.status || "unsupported"))} | ${markdownCell(percent(Number(check.confidence || 0)))} | ${markdownCell(run.status || "unknown")} | ${markdownCell(missingSymbols)} | ${markdownCell(evidenceSummaryText(check.evidence))} | ${markdownCell(recommendation)} |`);
+      const decision = testReviewDecision(check, run);
+      lines.push(`| ${markdownCell(markdownInlineCode(name))} | ${markdownCell(reportDisplayPath(result, options))} | ${markdownCell(decision.label)} | ${markdownCell(supportLabel(check.status || "unsupported"))} | ${markdownCell(percent(Number(check.confidence || 0)))} | ${markdownCell(run.status || "unknown")} | ${markdownCell(symbolSignalText(check, decision))} | ${markdownCell(evidenceSummaryText(check.evidence, options))} | ${markdownCell(decision.action)} |`);
       wroteTestRow = true;
     }
   }
 
   if (!wroteTestRow) {
-    lines.push("| - | - | - | - | - | - | - | - |");
+    lines.push("| - | - | - | - | - | - | - | - | - |");
   }
 
   return `${lines.join("\n")}\n`;
@@ -592,15 +598,141 @@ function nextDiscoveryLimit(limit) {
   return Math.max(current * 2, 1000);
 }
 
-function reportDisplayPath(result) {
+function summarizeTestDecisions(reports) {
+  return (reports || []).reduce(
+    (summary, result) => {
+      const checks = mapBy(result?.verification?.claim_checks || [], "claim");
+      const runs = mapBy(result?.execution?.per_test_results || [], "name");
+      for (const name of testNamesForReport(result, checks, runs)) {
+        const decision = testReviewDecision(checks.get(name) || {}, runs.get(name) || {});
+        if (decision.bucket === "safe") {
+          summary.safe += 1;
+        } else if (decision.bucket === "highRisk") {
+          summary.highRisk += 1;
+        } else {
+          summary.review += 1;
+        }
+        summary.total += 1;
+      }
+      return summary;
+    },
+    { safe: 0, review: 0, highRisk: 0, total: 0 }
+  );
+}
+
+function effectiveTestValue(result) {
+  const componentScore = scoreOrNull(result?.trust_assessment?.components?.etv_score);
+  if (componentScore !== null) {
+    return componentScore;
+  }
+  const legacyScore = scoreOrNull(result?.trust_assessment?.estimated_truth_value);
+  if (legacyScore !== null && legacyScore > 0) {
+    return legacyScore;
+  }
+  const decisions = summarizeTestDecisions([result]);
+  if (!decisions.total) {
+    return 0;
+  }
+  return (decisions.safe + (0.5 * decisions.review)) / decisions.total;
+}
+
+function scoreOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : null;
+}
+
+function testNamesForReport(result, checks = null, runs = null) {
+  const checkMap = checks || mapBy(result?.verification?.claim_checks || [], "claim");
+  const runMap = runs || mapBy(result?.execution?.per_test_results || [], "name");
+  return sortedUnique([
+    ...reportTestNames(result),
+    ...Array.from(checkMap.keys()),
+    ...Array.from(runMap.keys()),
+  ]);
+}
+
+function testReviewDecision(check, run) {
+  const groundedStatus = check?.status || "unsupported";
+  const executionStatus = run?.status || "unknown";
+  const missingCount = (check?.missing_symbols || []).length;
+  const passed = executionStatus === "passed";
+  const failed = executionStatus === "failed" || executionStatus === "error";
+
+  if (groundedStatus === "supported" && passed && missingCount === 0) {
+    return {
+      bucket: "safe",
+      label: "Safe to keep",
+      action: "Keep. Grounded, passed, and no missing source symbols were detected.",
+    };
+  }
+
+  if (groundedStatus === "supported" && passed) {
+    return {
+      bucket: "review",
+      label: "Review context",
+      action: `Passed and grounded. Confirm ${pluralize(missingCount, "unresolved symbol")} are test helpers, fixtures, mocks, or included source context before treating this as fully clean.`,
+    };
+  }
+
+  if (groundedStatus === "supported") {
+    return {
+      bucket: "review",
+      label: "Fix execution",
+      action: `Grounded in source evidence, but execution is ${executionStatus}. Fix the failing test, fixture setup, or runtime dependency before keeping it.`,
+    };
+  }
+
+  if (groundedStatus === "borderline" && passed) {
+    return {
+      bucket: "review",
+      label: "Review grounding",
+      action: "Execution passed, but source evidence is only partial. Tighten imports, assertions, or selected source context before relying on it.",
+    };
+  }
+
+  if (groundedStatus === "borderline" && !failed) {
+    return {
+      bucket: "review",
+      label: "Review manually",
+      action: `Source evidence is partial and execution is ${executionStatus}. Review the nearest evidence snippet before keeping this test.`,
+    };
+  }
+
+  return {
+    bucket: "highRisk",
+    label: "High-risk ghost test",
+    action: "Do not keep as-is. Rewrite against real project APIs and source-backed behavior, then rerun Ghost Test Catcher.",
+  };
+}
+
+function symbolSignalText(check, decision) {
+  const missing = check?.missing_symbols || [];
+  if (!missing.length) {
+    return "None";
+  }
+  const symbols = missing.map(markdownInlineCode).join(", ");
+  if (decision.bucket === "highRisk") {
+    return `Missing API/context: ${symbols}`;
+  }
+  if (check?.status === "supported") {
+    return `Context gap: ${symbols}`;
+  }
+  return `Review symbols: ${symbols}`;
+}
+
+function pluralize(count, singular) {
+  return `${count} ${singular}${count === 1 ? "" : "s"}`;
+}
+
+function reportDisplayPath(result, options = {}) {
   const directPath = result?.__testFile;
   if (directPath) {
-    return directPath;
+    return displayPath(directPath, options.workspaceRoot);
   }
   const inputPaths = (result?.input_test_files || [])
     .map((item) => item?.path)
     .filter(Boolean);
-  return inputPaths.length ? inputPaths.join(", ") : "unknown";
+  return inputPaths.length ? inputPaths.map((item) => displayPath(item, options.workspaceRoot)).join(", ") : "unknown";
 }
 
 function executionSummaryText(result) {
@@ -620,19 +752,66 @@ function executionSummaryText(result) {
     .join(", ");
 }
 
-function evidenceSummaryText(evidence) {
+function evidenceSummaryText(evidence, options = {}) {
   if (!evidence || !evidence.path) {
     return "-";
   }
+  const display = displayPath(evidence.path, options.workspaceRoot);
   const startLine = Number(evidence.start_line || 0);
   const endLine = Number(evidence.end_line || 0);
   if (startLine && endLine && endLine !== startLine) {
-    return `${evidence.path}:${startLine}-${endLine}`;
+    return `${display}:${startLine}-${endLine}`;
   }
   if (startLine) {
-    return `${evidence.path}:${startLine}`;
+    return `${display}:${startLine}`;
   }
-  return evidence.path;
+  return display;
+}
+
+function displayPath(value, workspaceRoot = "") {
+  const text = String(value || "").trim();
+  const root = String(workspaceRoot || "").trim();
+  if (!text) {
+    return "unknown";
+  }
+  if (root) {
+    const relative = relativeDisplayPath(root, text);
+    if (relative) {
+      return relative;
+    }
+  }
+  return slashPath(text);
+}
+
+function relativeDisplayPath(root, target) {
+  if (isWindowsAbsolutePath(root) && isWindowsAbsolutePath(target)) {
+    const relative = path.win32.relative(root, target);
+    return safeRelativePath(relative);
+  }
+  if (path.isAbsolute(root) && path.isAbsolute(target)) {
+    const relative = path.relative(root, target);
+    return safeRelativePath(relative);
+  }
+  return "";
+}
+
+function safeRelativePath(relative) {
+  if (!relative || relative === ".") {
+    return "";
+  }
+  const normalized = slashPath(relative);
+  if (normalized.startsWith("../") || normalized === ".." || isWindowsAbsolutePath(normalized) || path.isAbsolute(normalized)) {
+    return "";
+  }
+  return normalized;
+}
+
+function slashPath(value) {
+  return String(value).replace(/\\/g, "/");
+}
+
+function isWindowsAbsolutePath(value) {
+  return /^[A-Za-z]:[\\/]/.test(String(value || ""));
 }
 
 function markdownCell(value) {
@@ -673,20 +852,23 @@ function nativeTestOutcome(groundedStatus, executionStatus) {
 }
 
 function nativeTestMessage({ name, groundedStatus, executionStatus, confidence, missingSymbols, riskCategories, recommendation }) {
+  const decision = testReviewDecision(
+    { status: groundedStatus || "unsupported", missing_symbols: missingSymbols || [], recommendation: recommendation || "" },
+    { status: executionStatus || "unknown" }
+  );
   const details = [
+    `Decision: ${decision.label}`,
     `Grounding: ${supportLabel(groundedStatus || "unsupported")}`,
     `Confidence: ${percent(Number(confidence || 0))}`,
     `Execution: ${executionStatus || "unknown"}`,
   ];
   if (missingSymbols && missingSymbols.length) {
-    details.push(`Missing symbols: ${missingSymbols.join(", ")}`);
+    details.push(`Symbol signal: ${symbolSignalText({ status: groundedStatus || "unsupported", missing_symbols: missingSymbols }, decision).replace(/`/g, "")}`);
   }
   if (riskCategories && riskCategories.length) {
     details.push(`Risk categories: ${riskCategories.join(", ")}`);
   }
-  if (recommendation) {
-    details.push(`Recommendation: ${recommendation}`);
-  }
+  details.push(`Action: ${decision.action}`);
   return `Ghost Test Catcher result for ${name}.\n${details.join("\n")}`;
 }
 
@@ -927,10 +1109,10 @@ function renderSingleReport(result) {
     const check = checks.get(name) || {};
     const run = runs.get(name) || {};
     const evidence = check.evidence ? `${check.evidence.path}:${check.evidence.start_line}-${check.evidence.end_line}` : "No evidence";
-    const missing = (check.missing_symbols || []).join(", ") || "-";
     const exactEvidence = (check.evidence_symbols || []).join(", ");
     const categories = (check.risk_categories || []).join(", ") || "-";
-    const recommendation = check.recommendation || "-";
+    const decision = testReviewDecision(check, run);
+    const symbolSignal = symbolSignalText(check, decision);
     const framework = check.framework || "unknown";
     const status = check.status || "unsupported";
     const runStatus = run.status || "unknown";
@@ -943,9 +1125,10 @@ function renderSingleReport(result) {
       runStatus,
       evidence,
       exactEvidence,
-      missing,
+      symbolSignal,
       categories,
-      recommendation,
+      decision.label,
+      decision.action,
     ].join(" ").toLowerCase();
     return `<tr data-test-row="true" data-framework="${escapeHtml(framework)}" data-missing="${hasMissing ? "true" : "false"}" data-failed="${failedOrRisky ? "true" : "false"}" data-search="${escapeHtml(search)}">
       <td><code>${escapeHtml(name)}</code></td>
@@ -955,8 +1138,8 @@ function renderSingleReport(result) {
       <td class="${escapeHtml(runStatus)}">${escapeHtml(runStatus)}</td>
       <td class="muted">${escapeHtml(categories)}</td>
       <td class="evidence"><details><summary>${escapeHtml(evidence)}</summary>${exactEvidence ? `<div>${escapeHtml(exactEvidence)}</div>` : "<div>No exact evidence symbols.</div>"}</details></td>
-      <td>${escapeHtml(missing)}</td>
-      <td class="recommendation">${escapeHtml(recommendation)}</td>
+      <td>${escapeHtml(symbolSignal)}</td>
+      <td class="recommendation"><strong>${escapeHtml(decision.label)}</strong><br>${escapeHtml(decision.action)}</td>
     </tr>`;
   }).join("");
 
@@ -978,7 +1161,7 @@ function renderSingleReport(result) {
     </div>
     <table>
       <thead>
-        <tr><th>Test</th><th>Framework</th><th>Grounding</th><th>Confidence</th><th>Run</th><th>Categories</th><th>Evidence</th><th>Missing</th><th>Recommendation</th></tr>
+        <tr><th>Test</th><th>Framework</th><th>Grounding</th><th>Confidence</th><th>Run</th><th>Categories</th><th>Evidence</th><th>Symbol Signal</th><th>Action</th></tr>
       </thead>
       <tbody>${rows || "<tr><td colspan=\"9\">No Python tests detected.</td></tr>"}</tbody>
     </table>
@@ -1079,6 +1262,7 @@ module.exports = {
   resolveImportModulesToSourcePaths,
   summarizeReports,
   summarizeCost,
+  summarizeTestDecisions,
   setupProfileSettings,
   supportLabel,
   toRelativeSourcePaths,

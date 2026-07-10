@@ -49,7 +49,7 @@ It helps answer questions that normal pytest output does not answer:
 - Is this test safe to keep, fix, or delete?
 - Can this test review run locally in VS Code before code reaches CI?
 
-The default VS Code and CLI review workflow for existing tests uses local analysis and optional local pytest execution. It does not call an LLM, which means it adds **0 estimated LLM tokens** while reviewing tests that already exist in the repository. In VS Code, teams can copy a Markdown review summary after analysis and share the exact verdicts, evidence paths, missing symbols, execution status, and cost/cache details in pull requests or team chat.
+The default VS Code and CLI review workflow for existing tests uses local analysis and optional local pytest execution. It does not call an LLM, which means it adds **0 estimated LLM tokens** while reviewing tests that already exist in the repository. In VS Code, teams can copy a decision-first Markdown review summary after analysis and share the exact keep/review/risk counts, verdicts, evidence paths, symbol signals, execution status, true ETV, and cost/cache details in pull requests or team chat.
 
 For repeatable product metrics, token estimates, and marketing-safe claims, see:
 
@@ -447,7 +447,7 @@ npm run package
 
 `npm run test:integration` launches VS Code with `@vscode/test-electron`, opens the fixture Python workspace, activates the extension, runs Doctor, analyzes the active test file, checks Ghost Test Catcher diagnostics, and refreshes the Testing panel. Set `GHOST_TEST_CATCHER_TEST_PYTHON` if your desired Python executable is not named `python`.
 
-That produces `ghost-test-catcher-0.2.2.vsix`, installable through `Extensions: Install from VSIX...`.
+That produces `ghost-test-catcher-0.2.3.vsix`, installable through `Extensions: Install from VSIX...`.
 
 The extension package includes Marketplace metadata, a PNG icon, a changelog, and a `.vscodeignore` that excludes local build artifacts.
 The icon is reproducible:

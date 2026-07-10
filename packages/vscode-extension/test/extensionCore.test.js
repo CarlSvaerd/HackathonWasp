@@ -291,10 +291,10 @@ test("summarizeCost reports LLM calls, token estimates, and cache hits", () => {
   assert.equal(core.costSummaryText([{ __cacheHit: true, cost_estimate: { llm_calls: 0, estimated_input_tokens: 0 } }]), "0 LLM calls, ~0 input tokens, 1/1 cached");
 });
 
-test("renderMarkdownReportSummary creates a shareable evidence-backed review summary", () => {
+test("renderMarkdownReportSummary creates a product-ready evidence-backed review summary", () => {
   const markdown = core.renderMarkdownReportSummary([
     {
-      __testFile: "tests/test_checkout.py",
+      __testFile: "C:\\Users\\carlh\\Documents\\ProjectR\\HackathonWasp\\tests\\test_checkout.py",
       __cacheHit: true,
       cost_estimate: {
         llm_calls: 0,
@@ -305,7 +305,10 @@ test("renderMarkdownReportSummary creates a shareable evidence-backed review sum
       },
       trust_assessment: {
         verdict: "ghost_risk",
-        estimated_truth_value: 0.25,
+        estimated_truth_value: 0,
+        components: {
+          etv_score: 0.75,
+        },
       },
       verification: {
         claim_checks: [
@@ -313,13 +316,13 @@ test("renderMarkdownReportSummary creates a shareable evidence-backed review sum
             claim: "test_total_uses_real_price",
             status: "supported",
             confidence: 0.92,
-            missing_symbols: [],
+            missing_symbols: ["FakeLLM"],
             evidence: {
               path: "src/checkout.py",
               start_line: 10,
               end_line: 18,
             },
-            recommendation: "Keep this test.",
+            recommendation: "Point the test at APIs that exist in the selected source context.",
           },
           {
             claim: "test_missing_discount_api",
@@ -338,16 +341,27 @@ test("renderMarkdownReportSummary creates a shareable evidence-backed review sum
         ],
       },
     },
-  ]);
+  ], { workspaceRoot: "C:\\Users\\carlh\\Documents\\ProjectR\\HackathonWasp" });
 
   assert.ok(markdown.startsWith("## Ghost Test Catcher Summary"));
+  assert.ok(markdown.includes("### Decision"));
+  assert.ok(markdown.includes("- Safe to keep: 0"));
+  assert.ok(markdown.includes("- Review recommended: 1"));
+  assert.ok(markdown.includes("- High-risk ghost tests: 1"));
   assert.ok(markdown.includes("- Tests reviewed: 2"));
-  assert.ok(markdown.includes("- Cost/cache: 0 LLM calls, ~0 input tokens, 1/1 cached"));
-  assert.ok(markdown.includes("| tests/test_checkout.py | Ghost Test Risk | 2 | 25.0% | 1 failed, 1 passed | cached |"));
+  assert.ok(markdown.includes("- Token impact: 0 LLM calls, ~0 input tokens, 1/1 cached"));
+  assert.ok(markdown.includes("| tests/test_checkout.py | Ghost Test Risk | 2 | 75.0% | 0 keep / 1 review / 1 risk | 1 failed, 1 passed | cached |"));
+  assert.ok(!markdown.includes("C:\\Users\\carlh"));
   assert.ok(markdown.includes("`test_total_uses_real_price`"));
+  assert.ok(markdown.includes("Review context"));
+  assert.ok(markdown.includes("Context gap: `FakeLLM`"));
+  assert.ok(markdown.includes("Passed and grounded. Confirm 1 unresolved symbol"));
   assert.ok(markdown.includes("src/checkout.py:10-18"));
   assert.ok(markdown.includes("`discount\\|coupon`"));
-  assert.ok(markdown.includes("Rewrite against real checkout APIs."));
+  assert.ok(markdown.includes("High-risk ghost test"));
+  assert.ok(markdown.includes("Missing API/context: `discount\\|coupon`, `apply_discount`"));
+  assert.ok(markdown.includes("Do not keep as-is."));
+  assert.ok(!markdown.includes("Point the test at APIs that exist"));
 });
 
 test("discovery limit helpers produce actionable warning copy and a safe next limit", () => {
@@ -380,12 +394,14 @@ test("nativeTestMessage includes actionable per-test review details", () => {
   });
 
   assert.ok(message.includes("TestCheckout.test_total"));
+  assert.ok(message.includes("Decision: High-risk ghost test"));
   assert.ok(message.includes("Grounding: Ghost risk"));
   assert.ok(message.includes("Confidence: 12.5%"));
   assert.ok(message.includes("Execution: failed"));
-  assert.ok(message.includes("Missing symbols: calculate_total"));
+  assert.ok(message.includes("Symbol signal: Missing API/context: calculate_total"));
   assert.ok(message.includes("Risk categories: missing_symbols"));
-  assert.ok(message.includes("Recommendation: Point the test at APIs"));
+  assert.ok(message.includes("Action: Do not keep as-is."));
+  assert.ok(!message.includes("Recommendation: Point the test at APIs"));
 });
 
 test("package manifest declares limited workspace trust and guarded execution", () => {
@@ -520,7 +536,11 @@ test("renderReportHtml escapes user-controlled text and includes exact evidence 
   assert.ok(html.includes("login -&gt; src/auth.py:1"));
   assert.ok(html.includes("unittest"));
   assert.ok(html.includes("missing_symbols"));
-  assert.ok(html.includes("Point the test at APIs"));
+  assert.ok(html.includes("Symbol Signal"));
+  assert.ok(html.includes("Missing API/context"));
+  assert.ok(html.includes("High-risk ghost test"));
+  assert.ok(html.includes("Do not keep as-is."));
+  assert.ok(!html.includes("Point the test at APIs"));
   assert.ok(!html.includes("<script>alert(1)</script>"));
 });
 
