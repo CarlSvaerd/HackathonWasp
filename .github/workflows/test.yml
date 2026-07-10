@@ -36,6 +36,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install ".[all,dev]"
 
+      - name: Run repo hygiene audit
+        run: python tools/repo_hygiene_audit.py
+
       - name: Run tests
         run: pytest --maxfail=1 --disable-warnings -q
 
@@ -100,13 +103,13 @@ jobs:
 
       - name: Package extension
         working-directory: packages/vscode-extension
-        run: npx vsce package --no-dependencies --out ghost-test-catcher-0.1.0.vsix
+        run: npm run package
 
       - name: Upload VS Code extension VSIX
         uses: actions/upload-artifact@v4
         with:
           name: ghost-test-catcher-vsix
-          path: packages/vscode-extension/ghost-test-catcher-0.1.0.vsix
+          path: packages/vscode-extension/ghost-test-catcher-0.2.3.vsix
 
   vscode-extension-integration:
     name: VS Code integration (${{ matrix.os }})

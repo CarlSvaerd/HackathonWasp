@@ -11,17 +11,19 @@ OUTPUT ?= result.json
 PORT ?= 8000
 HOST ?= 127.0.0.1
 IMAGE_NAME ?= ghost-test-catcher
-WORKSPACE_PYTHON ?= /Users/carlhyllen/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3
+WORKSPACE_PYTHON ?= $(PYTHON)
 TESTS ?= tests/test_webapp_execution.py
 SOURCE ?= src
 
-.PHONY: help venv install install-dev ghost ghost-ci calibrate extension-icon extension-check extension-package explain explain-self web serve docker-build docker-run clean
+.PHONY: help venv install install-dev audit quality ghost ghost-ci calibrate extension-icon extension-check extension-package explain explain-self web serve docker-build docker-run clean
 
 help:
 	@echo "Available targets:"
 	@echo "  make venv            Create a local virtual environment in $(VENV_DIR)"
 	@echo "  make install         Install CLI and web app dependencies"
 	@echo "  make install-dev     Install development dependencies too"
+	@echo "  make audit           Run repository hygiene checks"
+	@echo "  make quality         Run hygiene, Python tests, and extension unit checks"
 	@echo "  make ghost           Analyze pytest files with Ghost Test Catcher"
 	@echo "  make ghost-ci        Run the Ghost Test Catcher CI gate"
 	@echo "  make calibrate       Run Ghost Test Catcher calibration cases"
@@ -59,6 +61,13 @@ install: venv
 install-dev: venv
 	$(PIP) install --upgrade pip
 	$(PIP) install -e ".[codebase,webapp,dev]"
+
+audit:
+	$(PYTHON) tools/repo_hygiene_audit.py
+
+quality: audit
+	$(PYTHON) -m pytest
+	cd packages/vscode-extension && npm run check && npm test
 
 ghost:
 	@test -x "$(VENV_PYTHON)" || (echo "Virtualenv missing. Run 'make install' first." && exit 1)
@@ -111,7 +120,7 @@ web:
 	$(VENV_PYTHON) -m uvicorn llmSHAP.webapp.app:app --host "$(HOST)" --port "$(PORT)"
 
 serve:
-	@echo "Serving /Users/carlhyllen/Documents/Hackathon/Project/llmSHAP on http://localhost:$(PORT)"
+	@echo "Serving $(CURDIR) on http://localhost:$(PORT)"
 	$(PYTHON) -m http.server "$(PORT)"
 
 docker-build:

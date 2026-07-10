@@ -1,93 +1,94 @@
-# Contributing to llmSHAP
+# Contributing to Ghost Test Catcher
 
-Contributions of all sizes are welcome: bug reports, docs fixes, examples, new heuristics/value functions, tests, and performance improvements.
+Ghost Test Catcher is a developer tool for checking whether Python tests, especially AI-generated tests, are grounded in real source code. Contributions should make that workflow clearer, safer, faster, or easier to trust.
 
-## Before you start
+The repository still includes the underlying `llmSHAP` attribution engine that powers parts of the analysis pipeline. Public product work should keep Ghost Test Catcher as the first-class user experience and treat `llmSHAP` internals as supporting implementation unless a change is explicitly about the attribution engine.
 
-- Please search existing issues (and open a new one if needed) so work doesn’t get duplicated.
-- For larger changes (new attribution method, new public API, refactors), it’s best to open an issue first describing the approach and trade-offs.
+## Development Setup
 
-## Development setup
-
-Clone your fork and install the full dependency setup in editable mode. That is, using:
+Use Python 3.11 or newer.
 
 ```bash
-pip install -e ".[all]"
+pip install -e ".[codebase,webapp,dev]"
 ```
 
-The repo uses a `src/` layout (library code in `src/llmSHAP`) and tests in `tests/`.
-
-## Running tests
+For the VS Code extension:
 
 ```bash
-pytest -vv
+cd packages/vscode-extension
+npm install --ignore-scripts
 ```
 
-If you add new functionality, please add or update tests. 
-Prefer small, deterministic unit tests. 
-If a test depends on an external model/provider, keep it behind an explicit opt-in (e.g., a marker) and document the required environment variables.
+## Required Checks
 
-## Local LLM/provider credentials
-
-Some examples or optional tests may require API keys (e.g., OpenAI). Never commit secrets.
-
-Recommended pattern:
-- Export keys in your shell (or use a local `.env` that is ignored by git)
-- Keep provider calls out of unit tests
-
-## Building docs (optional)
-
-Documentation lives in `docs/`. 
-If you change public APIs, please update the docs and/or tutorial accordingly.
-
-A common workflow is:
+Run the hygiene audit before committing product-facing changes:
 
 ```bash
-# from repo root
-cd docs
-make html
+python tools/repo_hygiene_audit.py
 ```
 
-If your change affects user-facing behavior, add a short snippet to the docs/tutorial showing how to use it.
+Run the Python test suite:
 
-## Coding guidelines
+```bash
+python -m pytest
+```
 
-- Keep changes focused and easy to review.
-- Maintain backwards compatibility unless there’s a clear reason to break it (and then call it out in the PR).
-- Prefer readable, well-factored code over cleverness.
-- Public functions/classes should have docstrings that explain intent and usage.
-- Keep type hints up to date for new/changed APIs.
+Run the VS Code extension unit checks:
 
+```bash
+cd packages/vscode-extension
+npm run check
+npm test
+```
 
-## Adding new features
+For one-command local confidence when dependencies are already installed:
 
-If you’re adding a new component (e.g., a new value function, codec, heuristic, or LLM interface), please aim for:
+```bash
+make quality PYTHON=python
+```
 
-- A small, composable class/module with a clear interface
-- At least one unit test (and a doc/example if it’s user-facing)
-- Sensible defaults and clear error messages
-- No hard dependency on a specific provider unless it’s isolated behind an optional extra
+## Repository Hygiene
 
-## Pull request checklist
+Do not commit generated package-manager caches, local extension packages, local reports, or duplicate root documentation. In particular, keep these out of Git:
 
-Before opening a PR, please make sure:
+- `.pnpm-store/`
+- `packages/vscode-extension/*.vsix`
+- `packages/vscode-extension/.vscode-test/`
+- `packages/vscode-extension/node_modules/`
+- `ghost-test-catcher-report.json`
+- `ghost-test-catcher-summary.md`
+- `README 2.md` or any other duplicate root README
+- `*.egg-info/`
 
-- [ ] Tests pass locally (`pytest`)
-- [ ] Added/updated tests for new behavior
-- [ ] Docs/examples updated (if user-facing)
-- [ ] No secrets or credentials are included
-- [ ] PR description explains: what changed, why, and how to test it
+The hygiene audit fails if these show up as tracked files.
 
-## Reporting bugs
+## Coding Guidelines
 
-When opening an issue, please include:
+- Keep product copy direct and decision-oriented. Users should understand whether a test is safe to keep, needs review, or is high-risk.
+- Prefer small, deterministic tests. Avoid tests that require network calls unless they are explicitly opt-in.
+- Keep execution safety visible. Changes that run code should preserve workspace trust checks, confirmation prompts, timeouts, and clear output-channel logs.
+- Do not add speculative abstractions unless they have a current caller, test, and user-facing reason to exist.
+- Keep generated artifacts out of source control. Release artifacts belong in GitHub Releases, package registries, or the VS Code Marketplace, not normal commits.
 
-- What you expected to happen vs what happened
-- Minimal reproduction code (smallest prompt/data that triggers it)
-- Your environment (OS, Python version, llmSHAP version)
-- Any relevant logs/tracebacks
-- Whether a specific provider/model was used
+## Pull Request Checklist
+
+- [ ] `python tools/repo_hygiene_audit.py` passes.
+- [ ] `python -m pytest` passes.
+- [ ] `npm run check` and `npm test` pass in `packages/vscode-extension`.
+- [ ] User-facing behavior has tests or a documented manual verification path.
+- [ ] Documentation and release notes are updated when commands, settings, reports, or package filenames change.
+- [ ] No secrets, local paths, generated caches, or local build outputs are included.
+
+## Reporting Bugs
+
+Please include:
+
+- the command or VS Code action you ran,
+- the test file and source paths involved,
+- whether execution was local, static-only, or Docker-backed,
+- the Ghost Test Catcher output-channel error if the VS Code extension failed,
+- your OS, Python version, VS Code version, and extension version.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the project’s MIT License.
+By contributing, you agree that your contributions are licensed under the repository's MIT License.

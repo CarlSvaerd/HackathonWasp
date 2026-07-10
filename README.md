@@ -437,6 +437,8 @@ The extension caches valid reports using source/test file fingerprints and inval
 Package the extension locally with:
 
 ```bash
+python tools/repo_hygiene_audit.py
+python -m pytest
 cd packages/vscode-extension
 npm install --ignore-scripts
 npm run check
@@ -507,24 +509,16 @@ The product focus of this repo is now Ghost Test Catcher itself:
 
 The analyzer is Python-first, but the ghost package now exposes a language adapter boundary through `llmSHAP.ghost.adapters`. The active `PythonAdapter` owns Python source/test path detection and supported execution backend names. Future JavaScript or TypeScript support should add a new adapter with parser, test discovery, runner, grounding extractor, and execution result normalization behind the same interface.
 
-## Current Status
+## Product Status
 
-This is an early product build with a working CLI, web app, CI mode, and VS Code extension.
+Ghost Test Catcher is an active developer-tool product with a working CLI, web app, CI mode, and VS Code extension.
 
-The trust thresholds and score cutoffs are prototype heuristics, not calibrated benchmark values.
+The default trust thresholds are conservative heuristic defaults. For strict organizational policy, calibrate them with representative labeled tests before using them as a hard compliance gate.
 
-The project is best understood as:
+The product is designed for:
 
-- a product demo,
-- a devtool concept,
-- and a research direction around verification before trust.
-
-## Suggested Uses
-
-Potential future directions include:
-
-- CI gates for AI-generated tests,
-- IDE plugins for trust scoring,
-- pull request review assistants,
-- auditability tools for AI-assisted development,
-- enterprise governance for generated code and tests.
+- local review of AI-generated or suspicious tests,
+- CI gates for generated-test pull requests,
+- VS Code diagnostics and Testing panel workflows,
+- audit trails for AI-assisted development,
+- team policies around verification before trust.

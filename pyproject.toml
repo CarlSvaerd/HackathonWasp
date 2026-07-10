@@ -9,21 +9,26 @@ include = ["llmSHAP*", "ghost_test_catcher*"]
 [project]
 name = "ghost-test-catcher"
 version = "0.1.0"
-description = "LLM attribution plus Ghost Test Catcher, a trust checker for AI-generated Python tests."
+description = "Ghost Test Catcher verifies whether AI-generated Python tests are grounded in real source evidence."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
+  { name = "Carl Svaerd" },
   { name = "Filip Naudot" },
+]
+maintainers = [
+  { name = "Carl Svaerd" },
 ]
 license = "MIT"
 license-files = ["LICENSE"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.11",
+  "Topic :: Software Development :: Testing",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
@@ -46,7 +51,7 @@ ghost-test-catcher = "ghost_test_catcher.cli:main"
 [project.urls]
 Homepage = "https://github.com/CarlSvaerd/HackathonWasp"
 Repository = "https://github.com/CarlSvaerd/HackathonWasp"
-Documentation = "https://filipnaudot.github.io/llmSHAP/"
+Documentation = "https://github.com/CarlSvaerd/HackathonWasp/blob/main/docs/ghost-test-catcher.rst"
 Issues = "https://github.com/CarlSvaerd/HackathonWasp/issues"
 
 [tool.ghost-test-catcher]

@@ -27,6 +27,7 @@ This runbook turns the repository into a repeatable product release flow for the
 ## Local Verification Commands
 
 ```bash
+python tools/repo_hygiene_audit.py
 python -m pytest
 python -m ghost_test_catcher.cli calibrate --format pretty
 python -m ghost_test_catcher.cli doctor --repo .
@@ -106,7 +107,8 @@ Use `--fail-on ghost_risk` for the first rollout. It blocks only the highest-ris
 ## Release Sequence
 
 1. Run the local verification commands.
-2. Confirm `packages/vscode-extension/ghost-test-catcher-0.2.3.vsix` was rebuilt.
-3. Install the VSIX locally and run the extension against at least one grounded test and one intentionally ghost-risk test.
-4. Push the branch and confirm GitHub Actions produces Python, calibration, CI gate, and extension packaging results.
-5. Publish the VSIX manually from the Marketplace publisher management page or with `vsce publish` after publisher authentication is configured.
+2. Confirm `python tools/repo_hygiene_audit.py` passes before packaging or publishing.
+3. Confirm `packages/vscode-extension/ghost-test-catcher-0.2.3.vsix` was rebuilt.
+4. Install the VSIX locally and run the extension against at least one grounded test and one intentionally ghost-risk test.
+5. Push the branch and confirm GitHub Actions produces Python, calibration, CI gate, and extension packaging results.
+6. Publish the VSIX manually from the Marketplace publisher management page or with `vsce publish` after publisher authentication is configured.
