@@ -54,8 +54,9 @@ The extension also contributes a VS Code walkthrough and shows a one-time setup 
 - **Inline diagnostics:** marks pytest-style functions and `unittest.TestCase` methods with groundedness and execution findings.
 - **CodeLens summaries:** shows verdict, run status, and confidence above analyzed tests.
 - **Filterable report panel:** review reliability, ETV, framework, run status, risk categories, recommendations, source evidence, and missing symbols.
+- **Copyable report summaries:** copy a Markdown summary for pull requests, issues, code reviews, or team chat.
 - **Native Testing panel:** discovers Python tests and runs `Analyze with Ghost Test Catcher` as a VS Code test profile.
-- **Persistent cache:** restores valid diagnostics, CodeLens, and reports after reloads and avoids unnecessary reruns.
+- **Configurable cache persistence:** restores valid diagnostics, CodeLens, and reports after reloads by default, with an in-memory-only privacy mode for sensitive workspaces.
 - **Visible cost and cache signals:** reports and completion messages show LLM call estimates, token estimates, and whether results came from cache.
 - **Quick Fix actions:** open evidence files, copy missing symbols, and rerun static-only analysis.
 - **CI generator:** writes a ready-to-use GitHub Actions gate with `Ghost Test Catcher: Add GitHub Actions Gate`.
@@ -95,6 +96,7 @@ For normal users, start with `Ghost Test Catcher: Setup`. Setup checks the confi
 - `Ghost Test Catcher: Open Last Report`
 - `Ghost Test Catcher: Refresh Testing Panel`
 - `Ghost Test Catcher: Clear Analysis Cache`
+- `Ghost Test Catcher: Copy Report Summary`
 - `Ghost Test Catcher: Add GitHub Actions Gate`
 
 ## Settings
@@ -110,7 +112,8 @@ For normal users, start with `Ghost Test Catcher: Setup`. Setup checks the confi
 - `ghostTestCatcher.dockerImage`: Docker image used when Docker execution is enabled. The image must include Python and pytest. Defaults to `ghost-test-catcher-runner:latest`.
 - `ghostTestCatcher.testMode`: one of `unit`, `integration`, `e2e`, or `mixed`.
 - `ghostTestCatcher.maxFiles`: maximum source/context files read.
-- `ghostTestCatcher.analysisCacheEnabled`: cache valid reports in VS Code workspace state. Defaults to `true`.
+- `ghostTestCatcher.analysisCacheEnabled`: enable report caching when file fingerprints are valid. Defaults to `true`.
+- `ghostTestCatcher.persistAnalysisCache`: persist cached report content in VS Code workspace state across reloads. Defaults to `true`; set to `false` to keep cache entries in memory only for the current VS Code session.
 - `ghostTestCatcher.cacheFingerprintLimit`: maximum Python files fingerprinted per cached report. Defaults to `300`.
 - `ghostTestCatcher.testDiscoveryLimit`: maximum Python files scanned when populating the VS Code Testing panel. Defaults to `500`.
 - `ghostTestCatcher.ciFailOn`: generated GitHub Actions failure policy. Defaults to `ghost_risk`.
@@ -119,7 +122,7 @@ For normal users, start with `Ghost Test Catcher: Setup`. Setup checks the confi
 
 ## Testing Panel
 
-Open VS Code's Testing view to see Python test files discovered by Ghost Test Catcher. The extension adds one file-level item per test file and one child item per detected `def test_*`, async test function, or direct `unittest.TestCase` method.
+Open VS Code's Testing view to see Python test files discovered by Ghost Test Catcher. The extension adds one file-level item per test file and one child item per detected `def test_*`, async test function, or direct `unittest.TestCase` method. If a large workspace reaches `ghostTestCatcher.testDiscoveryLimit`, the extension shows a warning with actions to open the setting or increase the workspace limit.
 
 Use the `Analyze with Ghost Test Catcher` run profile from the Testing panel to run grounding analysis through the same CLI path used by the command palette. Grounded and executed tests are marked as passed, unsupported or borderline tests are marked as failed with a detailed message, and grounded tests with execution disabled are marked as skipped. The run also refreshes diagnostics, CodeLens results, and the last report.
 
@@ -127,11 +130,11 @@ Use the `Analyze with Ghost Test Catcher` run profile from the Testing panel to 
 
 Run `Ghost Test Catcher: Setup` first in a new workspace. Choose the recommended local mode for normal development, static-only mode when reviewing untrusted generated tests, or Docker mode when the team wants execution isolation. Setup checks an explicitly configured Python first, then active `VIRTUAL_ENV` or `CONDA_PREFIX`, then workspace `.venv`, `venv`, `.env`, and `env` folders before falling back to `python` and `python3`. Setup updates `ghostTestCatcher.pythonPath`, `ghostTestCatcher.executeTests`, `ghostTestCatcher.executionBackend`, and `ghostTestCatcher.confirmExecution` at workspace scope, then opens Doctor so the result is visible.
 
-Analysis results are cached per workspace using the project root, test path, source context, settings, and file fingerprints. Valid cached reports are restored after a VS Code reload and are reused by command-palette and Testing panel runs. When a relevant Python file changes, stale diagnostics and cache entries are invalidated.
+Analysis results are cached per workspace using the project root, test path, source context, settings, and file fingerprints. Valid cached reports are restored after a VS Code reload and are reused by command-palette and Testing panel runs. When a relevant Python file changes, stale diagnostics and cache entries are invalidated. Teams that do not want report content persisted in VS Code workspace state can set `ghostTestCatcher.persistAnalysisCache` to `false`; the extension will still reuse valid results during the current session but clears persisted cache storage.
 
 The normal VS Code review path analyzes existing tests with local parsing, source evidence checks, similarity scoring, and optional pytest execution. It does not call an LLM. The report panel displays this as `0 LLM calls` and marks whether each result was fresh or served from cache.
 
-Diagnostics expose Quick Fixes for common review actions: open the best evidence file at the reported line, copy missing symbols to the clipboard, or rerun the selected file with static analysis only. The report panel includes client-side filters and expandable evidence details for larger review sessions.
+Diagnostics expose Quick Fixes for common review actions: open the best evidence file at the reported line, copy missing symbols to the clipboard, or rerun the selected file with static analysis only. The report panel includes client-side filters and expandable evidence details for larger review sessions. Use `Ghost Test Catcher: Copy Report Summary` after analysis to copy a Markdown summary with verdict counts, cost/cache details, per-file results, per-test grounding, missing symbols, execution status, evidence locations, and recommendations.
 
 Use `Ghost Test Catcher: Add GitHub Actions Gate` to write `.github/workflows/ghost-test-catcher.yml` for pull-request and main-branch checks. The generated workflow installs the package, runs `ghost-test-catcher ci`, publishes a Markdown summary, and uploads JSON/Markdown artifacts.
 
@@ -161,4 +164,4 @@ npm run package
 
 `npm run test:integration` uses `@vscode/test-electron` to download or reuse VS Code, open the fixture workspace in an Extension Development Host, run Doctor, analyze a Python test file, verify diagnostics, and refresh the Testing panel. Set `GHOST_TEST_CATCHER_TEST_PYTHON` when the desired Python executable is not simply `python`.
 
-The package command creates `ghost-test-catcher-0.2.1.vsix`, which can be installed in VS Code with `Extensions: Install from VSIX...`.
+The package command creates `ghost-test-catcher-0.2.2.vsix`, which can be installed in VS Code with `Extensions: Install from VSIX...`.

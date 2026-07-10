@@ -516,6 +516,144 @@ function costSummaryText(reports) {
   return `${summary.llmCalls} LLM call${summary.llmCalls === 1 ? "" : "s"}, ~${formatInteger(summary.estimatedInputTokens)} input tokens${outputText}, ${cacheText}`;
 }
 
+function renderMarkdownReportSummary(reports) {
+  const normalizedReports = (reports || []).filter(Boolean);
+  const summary = summarizeReports(normalizedReports);
+  const testCount = normalizedReports.reduce((total, result) => total + reportTestNames(result).length, 0);
+  const lines = [
+    "## Ghost Test Catcher Summary",
+    "",
+    `- Reports analyzed: ${normalizedReports.length}`,
+    `- Tests reviewed: ${testCount}`,
+    `- Verdicts: ${summary.reliable} reliable, ${summary.needsReview} needs review, ${summary.ghostRisk} ghost test risk`,
+    `- Cost/cache: ${costSummaryText(normalizedReports)}`,
+  ];
+
+  if (!normalizedReports.length) {
+    lines.push("", "No Ghost Test Catcher reports are available yet.");
+    return `${lines.join("\n")}\n`;
+  }
+
+  lines.push(
+    "",
+    "### Files",
+    "",
+    "| File | Verdict | Tests | ETV | Execution | Cache |",
+    "| --- | --- | ---: | ---: | --- | --- |"
+  );
+
+  for (const result of normalizedReports) {
+    const trust = result.trust_assessment || {};
+    lines.push(`| ${markdownCell(reportDisplayPath(result))} | ${markdownCell(verdictLabel(trust.verdict || "needs_review"))} | ${reportTestNames(result).length} | ${markdownCell(percent(Number(trust.estimated_truth_value || 0)))} | ${markdownCell(executionSummaryText(result))} | ${markdownCell(result.__cacheHit ? "cached" : "fresh")} |`);
+  }
+
+  lines.push(
+    "",
+    "### Test Details",
+    "",
+    "| Test | File | Grounding | Confidence | Execution | Missing symbols | Evidence | Recommendation |",
+    "| --- | --- | --- | ---: | --- | --- | --- | --- |"
+  );
+
+  let wroteTestRow = false;
+  for (const result of normalizedReports) {
+    const checks = mapBy(result.verification?.claim_checks || [], "claim");
+    const runs = mapBy(result.execution?.per_test_results || [], "name");
+    const testNames = sortedUnique([
+      ...reportTestNames(result),
+      ...Array.from(checks.keys()),
+      ...Array.from(runs.keys()),
+    ]);
+
+    for (const name of testNames) {
+      const check = checks.get(name) || {};
+      const run = runs.get(name) || {};
+      const missingSymbols = (check.missing_symbols || []).map(markdownInlineCode).join(", ") || "-";
+      const recommendation = check.recommendation || "-";
+      lines.push(`| ${markdownCell(markdownInlineCode(name))} | ${markdownCell(reportDisplayPath(result))} | ${markdownCell(supportLabel(check.status || "unsupported"))} | ${markdownCell(percent(Number(check.confidence || 0)))} | ${markdownCell(run.status || "unknown")} | ${markdownCell(missingSymbols)} | ${markdownCell(evidenceSummaryText(check.evidence))} | ${markdownCell(recommendation)} |`);
+      wroteTestRow = true;
+    }
+  }
+
+  if (!wroteTestRow) {
+    lines.push("| - | - | - | - | - | - | - | - |");
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
+function discoveryLimitWarningMessage(limit) {
+  return `Ghost Test Catcher stopped test discovery after scanning ${formatInteger(limit)} Python files. Increase ghostTestCatcher.testDiscoveryLimit if tests are missing from the Testing panel.`;
+}
+
+function nextDiscoveryLimit(limit) {
+  const parsed = Number(limit || 0);
+  const current = Number.isFinite(parsed) && parsed > 0 ? parsed : 500;
+  return Math.max(current * 2, 1000);
+}
+
+function reportDisplayPath(result) {
+  const directPath = result?.__testFile;
+  if (directPath) {
+    return directPath;
+  }
+  const inputPaths = (result?.input_test_files || [])
+    .map((item) => item?.path)
+    .filter(Boolean);
+  return inputPaths.length ? inputPaths.join(", ") : "unknown";
+}
+
+function executionSummaryText(result) {
+  const execution = result?.execution || {};
+  const perTestResults = execution.per_test_results || [];
+  if (!perTestResults.length) {
+    return execution.status || "not run";
+  }
+  const counts = new Map();
+  for (const item of perTestResults) {
+    const status = item?.status || "unknown";
+    counts.set(status, (counts.get(status) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((left, right) => left[0].localeCompare(right[0]))
+    .map(([status, count]) => `${count} ${status}`)
+    .join(", ");
+}
+
+function evidenceSummaryText(evidence) {
+  if (!evidence || !evidence.path) {
+    return "-";
+  }
+  const startLine = Number(evidence.start_line || 0);
+  const endLine = Number(evidence.end_line || 0);
+  if (startLine && endLine && endLine !== startLine) {
+    return `${evidence.path}:${startLine}-${endLine}`;
+  }
+  if (startLine) {
+    return `${evidence.path}:${startLine}`;
+  }
+  return evidence.path;
+}
+
+function markdownCell(value) {
+  const text = String(value ?? "-")
+    .replace(/\r?\n/g, " ")
+    .replace(/\|/g, "\\|")
+    .trim();
+  return text || "-";
+}
+
+function markdownInlineCode(value) {
+  const text = String(value ?? "-")
+    .replace(/\r?\n/g, " ")
+    .replace(/`/g, "'");
+  return `\`${text || "-"}\``;
+}
+
+function sortedUnique(values) {
+  return Array.from(new Set((values || []).filter(Boolean).map(String))).sort((left, right) => left.localeCompare(right));
+}
+
 function nonNegativeNumber(value) {
   const number = Number(value || 0);
   return Number.isFinite(number) && number > 0 ? number : 0;
@@ -932,8 +1070,11 @@ module.exports = {
   pypiInstallArgs,
   reportTestNames,
   renderGitHubActionsWorkflow,
+  renderMarkdownReportSummary,
   renderReportHtml,
   renderDoctorHtml,
+  discoveryLimitWarningMessage,
+  nextDiscoveryLimit,
   relativePathFromRoot,
   resolveImportModulesToSourcePaths,
   summarizeReports,

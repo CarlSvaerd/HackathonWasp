@@ -26,6 +26,8 @@ const TEST_REFRESH_DELAY_MS = 250;
 const ANALYSIS_CACHE_STORAGE_KEY = "ghostTestCatcher.analysisCache.v1";
 const ANALYSIS_CACHE_MAX_ENTRIES = 100;
 const SETUP_NUDGE_STORAGE_KEY = "ghostTestCatcher.setupNudge.v1";
+const DISCOVERY_LIMIT_WARNING_INTERVAL_MS = 10 * 60 * 1000;
+let lastDiscoveryLimitWarningAt = 0;
 
 function activate(context) {
   extensionContext = context;
@@ -46,6 +48,7 @@ function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.openSetupGuide", openSetupGuide));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.refreshTestExplorer", refreshTestExplorer));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.clearAnalysisCache", clearAnalysisCache));
+  context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.copyReportSummary", copyReportSummary));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.addGitHubActionsGate", addGitHubActionsGate));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.openEvidence", openEvidence));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.copyMissingSymbols", copyMissingSymbols));
@@ -159,6 +162,19 @@ async function clearAnalysisCache() {
   analysisCache.clear();
   await persistAnalysisCache();
   vscode.window.showInformationMessage("Ghost Test Catcher analysis cache cleared.");
+}
+
+async function copyReportSummary(explicitReports) {
+  const reports = Array.isArray(explicitReports) && explicitReports.length ? explicitReports : lastReports;
+  if (!reports.length) {
+    vscode.window.showInformationMessage("No Ghost Test Catcher report is available to copy yet.");
+    return;
+  }
+
+  const markdown = core.renderMarkdownReportSummary(reports);
+  await vscode.env.clipboard.writeText(markdown);
+  const testCount = reports.reduce((total, result) => total + core.reportTestNames(result).length, 0);
+  vscode.window.showInformationMessage(`Copied Ghost Test Catcher summary for ${testCount} test${testCount === 1 ? "" : "s"}.`);
 }
 
 async function addGitHubActionsGate() {
@@ -501,6 +517,12 @@ async function runCli(testFile, executeTests, selectedSourceFiles = [], token) {
 
 function loadAnalysisCache() {
   analysisCache.clear();
+  if (!shouldPersistAnalysisCache()) {
+    extensionContext?.workspaceState.update(ANALYSIS_CACHE_STORAGE_KEY, []).then(undefined, (error) => {
+      logOutput(`Failed to clear persisted analysis cache after persistence was disabled: ${error.message}`);
+    });
+    return;
+  }
   const entries = extensionContext?.workspaceState.get(ANALYSIS_CACHE_STORAGE_KEY, []) || [];
   for (const entry of entries) {
     if (entry && entry.key && entry.result && entry.fingerprints && entry.metadata) {
@@ -513,6 +535,10 @@ async function persistAnalysisCache() {
   if (!extensionContext) {
     return;
   }
+  if (!shouldPersistAnalysisCache()) {
+    await extensionContext.workspaceState.update(ANALYSIS_CACHE_STORAGE_KEY, []);
+    return;
+  }
   const entries = Array.from(analysisCache.values())
     .sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0))
     .slice(0, ANALYSIS_CACHE_MAX_ENTRIES);
@@ -520,6 +546,9 @@ async function persistAnalysisCache() {
 }
 
 async function restoreCachedReports() {
+  if (!shouldPersistAnalysisCache()) {
+    return;
+  }
   const restored = [];
   let pruned = false;
   for (const [key, entry] of analysisCache.entries()) {
@@ -565,6 +594,10 @@ async function restoreCachedReports() {
   if (pruned) {
     await persistAnalysisCache();
   }
+}
+
+function shouldPersistAnalysisCache() {
+  return getConfig().get("persistAnalysisCache", true);
 }
 
 function readCachedAnalysis(cacheKey, fingerprints) {
@@ -709,7 +742,32 @@ async function discoverWorkspaceTests() {
   }
 
   if (hitDiscoveryLimit) {
-    logOutput(`Test discovery reached ghostTestCatcher.testDiscoveryLimit (${limit}). Increase the setting if tests are missing from the Testing panel.`);
+    await showDiscoveryLimitWarning(limit);
+  }
+}
+
+async function showDiscoveryLimitWarning(limit) {
+  const message = core.discoveryLimitWarningMessage(limit);
+  logOutput(message);
+
+  const now = Date.now();
+  if (now - lastDiscoveryLimitWarningAt < DISCOVERY_LIMIT_WARNING_INTERVAL_MS) {
+    return;
+  }
+  lastDiscoveryLimitWarningAt = now;
+
+  const increaseAction = "Increase Limit";
+  const settingsAction = "Open Settings";
+  const choice = await vscode.window.showWarningMessage(message, increaseAction, settingsAction, "Dismiss");
+  if (choice === settingsAction) {
+    await vscode.commands.executeCommand("workbench.action.openSettings", "ghostTestCatcher.testDiscoveryLimit");
+    return;
+  }
+  if (choice === increaseAction) {
+    const nextLimit = core.nextDiscoveryLimit(limit);
+    await getConfig().update("testDiscoveryLimit", nextLimit, vscode.ConfigurationTarget.Workspace);
+    vscode.window.showInformationMessage(`Ghost Test Catcher test discovery limit increased to ${nextLimit}.`);
+    await discoverWorkspaceTests();
   }
 }
 

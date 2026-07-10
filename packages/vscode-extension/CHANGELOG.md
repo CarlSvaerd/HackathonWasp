@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2
+
+- Added `Ghost Test Catcher: Copy Report Summary`, which copies a Markdown review summary with verdict counts, cost/cache details, per-file results, per-test grounding, missing symbols, evidence locations, execution status, and recommendations.
+- Added `ghostTestCatcher.persistAnalysisCache` so sensitive workspaces can keep analysis caching in memory for the current VS Code session without persisting report content in VS Code workspace state.
+- Added a visible Testing panel discovery warning when `ghostTestCatcher.testDiscoveryLimit` is reached, including actions to open the setting or increase the workspace limit.
+- Updated the VSIX output filename to `ghost-test-catcher-0.2.2.vsix`.
+
 ## 0.2.1
 
 - Added visible report and notification cost summaries for LLM calls, estimated input tokens, output token ceilings, and analysis cache hits.

@@ -2,7 +2,7 @@
   "name": "ghost-test-catcher",
   "displayName": "Ghost Test Catcher",
   "description": "Detect whether AI-generated Python tests are grounded in your actual source code.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "carl-svaerd",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -65,6 +65,7 @@
     "onCommand:ghostTestCatcher.openLastReport",
     "onCommand:ghostTestCatcher.refreshTestExplorer",
     "onCommand:ghostTestCatcher.clearAnalysisCache",
+    "onCommand:ghostTestCatcher.copyReportSummary",
     "onCommand:ghostTestCatcher.addGitHubActionsGate"
   ],
   "main": "./extension.js",
@@ -75,7 +76,7 @@
     "test:integration": "node test/integration/runTest.js",
     "test:integration:ci": "node test/integration/runCi.js",
     "test:all": "node --test test/*.test.js && node test/integration/runTest.js",
-    "package": "vsce package --no-dependencies --out ghost-test-catcher-0.2.1.vsix"
+    "package": "vsce package --no-dependencies --out ghost-test-catcher-0.2.2.vsix"
   },
   "devDependencies": {
     "@vscode/test-electron": "^2.4.1",
@@ -163,6 +164,10 @@
         "title": "Ghost Test Catcher: Clear Analysis Cache"
       },
       {
+        "command": "ghostTestCatcher.copyReportSummary",
+        "title": "Ghost Test Catcher: Copy Report Summary"
+      },
+      {
         "command": "ghostTestCatcher.addGitHubActionsGate",
         "title": "Ghost Test Catcher: Add GitHub Actions Gate"
       }
@@ -243,7 +248,12 @@
         "ghostTestCatcher.analysisCacheEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Cache valid Ghost Test Catcher reports in VS Code workspace state and restore diagnostics after reload."
+          "description": "Cache valid Ghost Test Catcher reports when file fingerprints match. Use ghostTestCatcher.persistAnalysisCache to control whether cached report content survives VS Code reloads."
+        },
+        "ghostTestCatcher.persistAnalysisCache": {
+          "type": "boolean",
+          "default": true,
+          "description": "Persist cached report content in VS Code workspace state across reloads. Disable this to keep analysis caching in memory only for the current VS Code session."
         },
         "ghostTestCatcher.cacheFingerprintLimit": {
           "type": "number",

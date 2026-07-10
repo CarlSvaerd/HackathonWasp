@@ -291,6 +291,73 @@ test("summarizeCost reports LLM calls, token estimates, and cache hits", () => {
   assert.equal(core.costSummaryText([{ __cacheHit: true, cost_estimate: { llm_calls: 0, estimated_input_tokens: 0 } }]), "0 LLM calls, ~0 input tokens, 1/1 cached");
 });
 
+test("renderMarkdownReportSummary creates a shareable evidence-backed review summary", () => {
+  const markdown = core.renderMarkdownReportSummary([
+    {
+      __testFile: "tests/test_checkout.py",
+      __cacheHit: true,
+      cost_estimate: {
+        llm_calls: 0,
+        estimated_input_tokens: 0,
+      },
+      generated_tests: {
+        test_names: ["test_total_uses_real_price", "test_missing_discount_api"],
+      },
+      trust_assessment: {
+        verdict: "ghost_risk",
+        estimated_truth_value: 0.25,
+      },
+      verification: {
+        claim_checks: [
+          {
+            claim: "test_total_uses_real_price",
+            status: "supported",
+            confidence: 0.92,
+            missing_symbols: [],
+            evidence: {
+              path: "src/checkout.py",
+              start_line: 10,
+              end_line: 18,
+            },
+            recommendation: "Keep this test.",
+          },
+          {
+            claim: "test_missing_discount_api",
+            status: "unsupported",
+            confidence: 0.1,
+            missing_symbols: ["discount|coupon", "apply_discount"],
+            evidence: null,
+            recommendation: "Rewrite against real checkout APIs.",
+          },
+        ],
+      },
+      execution: {
+        per_test_results: [
+          { name: "test_total_uses_real_price", status: "passed" },
+          { name: "test_missing_discount_api", status: "failed" },
+        ],
+      },
+    },
+  ]);
+
+  assert.ok(markdown.startsWith("## Ghost Test Catcher Summary"));
+  assert.ok(markdown.includes("- Tests reviewed: 2"));
+  assert.ok(markdown.includes("- Cost/cache: 0 LLM calls, ~0 input tokens, 1/1 cached"));
+  assert.ok(markdown.includes("| tests/test_checkout.py | Ghost Test Risk | 2 | 25.0% | 1 failed, 1 passed | cached |"));
+  assert.ok(markdown.includes("`test_total_uses_real_price`"));
+  assert.ok(markdown.includes("src/checkout.py:10-18"));
+  assert.ok(markdown.includes("`discount\\|coupon`"));
+  assert.ok(markdown.includes("Rewrite against real checkout APIs."));
+});
+
+test("discovery limit helpers produce actionable warning copy and a safe next limit", () => {
+  assert.equal(core.nextDiscoveryLimit(500), 1000);
+  assert.equal(core.nextDiscoveryLimit(1200), 2400);
+  assert.equal(core.nextDiscoveryLimit(0), 1000);
+  assert.ok(core.discoveryLimitWarningMessage(500).includes("ghostTestCatcher.testDiscoveryLimit"));
+  assert.ok(core.discoveryLimitWarningMessage(500).includes("500"));
+});
+
 test("nativeTestOutcome maps Ghost Test Catcher statuses to VS Code Testing states", () => {
   assert.equal(core.nativeTestOutcome("supported", "passed"), "passed");
   assert.equal(core.nativeTestOutcome("supported", "skipped"), "skipped");
@@ -335,10 +402,12 @@ test("package manifest declares limited workspace trust and guarded execution", 
   assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.openSetupGuide"));
   assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.refreshTestExplorer"));
   assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.clearAnalysisCache"));
+  assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.copyReportSummary"));
   assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.addGitHubActionsGate"));
   assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.setup"));
   assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.openSetupGuide"));
   assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.refreshTestExplorer"));
+  assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.copyReportSummary"));
   assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.addGitHubActionsGate"));
   assert.deepEqual(manifest.categories, ["Testing", "Linters"]);
   assert.equal(manifest.pricing, "Free");
@@ -348,6 +417,10 @@ test("package manifest declares limited workspace trust and guarded execution", 
   );
   assert.equal(
     manifest.contributes.configuration.properties["ghostTestCatcher.analysisCacheEnabled"].default,
+    true
+  );
+  assert.equal(
+    manifest.contributes.configuration.properties["ghostTestCatcher.persistAnalysisCache"].default,
     true
   );
   assert.equal(
