@@ -57,6 +57,12 @@ def build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--source", nargs="*", help="Source/context file or directory paths.")
     generate.add_argument("--api-key", help="OpenAI API key. Defaults to OPENAI_API_KEY.")
     generate.add_argument("--model", help="OpenAI model name.")
+    generate.add_argument(
+        "--max-output-tokens",
+        type=int,
+        default=700,
+        help="Maximum output tokens requested for each optional generation call. Defaults to 700 to keep generation cost bounded.",
+    )
     generate.add_argument("--prompt", help="Override the generated-test prompt.")
     generate.add_argument("--instructions", help="Override system instructions for generation.")
     generate.add_argument("--strict-exit", action="store_true", help="Exit 2 for non-reliable results.")
@@ -217,7 +223,7 @@ def _handle_generate_and_check(args: argparse.Namespace) -> int:
     llm = OpenAIInterface(
         model_name=args.model or config.model,
         api_key=args.api_key,
-        max_tokens=900,
+        max_tokens=_positive_int(args.max_output_tokens, 700),
     )
     result = generate_and_check(
         files=files,
@@ -321,6 +327,12 @@ def _emit_pretty(result: dict[str, Any]) -> None:
     print(f"Verdict: {trust['verdict']} ({_pct(trust['reliability_score'])} reliability)")
     print(f"ETV: {_pct(components['etv_score'])}")
     print(f"Execution: {execution['status']} ({execution.get('passed', 0)}/{execution.get('test_count', 0)} passed)")
+    cost = result.get("cost_estimate") or {}
+    llm_calls = int(cost.get("llm_calls") or 0)
+    input_tokens = int(cost.get("estimated_input_tokens") or 0)
+    output_ceiling = cost.get("estimated_output_token_ceiling")
+    output_text = f", output ceiling {int(output_ceiling)}" if isinstance(output_ceiling, int) and output_ceiling > 0 else ""
+    print(f"Cost: {llm_calls} LLM call{'s' if llm_calls != 1 else ''}, ~{input_tokens} input tokens{output_text}")
     if execution.get("primary_failure"):
         print(f"Primary failure: {execution['primary_failure']}")
     print()
@@ -564,6 +576,12 @@ def _render_markdown_summary(result: dict[str, Any]) -> str:
 
 def _limit(cli_value: int | None, config_value: int) -> int:
     return cli_value if cli_value is not None else config_value
+
+
+def _positive_int(value: int | None, default: int) -> int:
+    if value is None:
+        return default
+    return value if value > 0 else default
 
 
 def _pct(value: float) -> str:

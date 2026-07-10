@@ -221,6 +221,36 @@ test("summarizeReports groups report verdicts for notifications", () => {
   });
 });
 
+test("summarizeCost reports LLM calls, token estimates, and cache hits", () => {
+  const summary = core.summarizeCost([
+    {
+      __cacheHit: true,
+      cost_estimate: {
+        llm_calls: 0,
+        estimated_input_tokens: 0,
+        estimated_output_token_ceiling: 0,
+      },
+    },
+    {
+      cost_estimate: {
+        llm_calls: 6,
+        estimated_input_tokens: 8198,
+        estimated_output_token_ceiling: 4200,
+      },
+    },
+  ]);
+
+  assert.deepEqual(summary, {
+    llmCalls: 6,
+    estimatedInputTokens: 8198,
+    estimatedOutputTokens: 0,
+    estimatedOutputTokenCeiling: 4200,
+    cacheHits: 1,
+    total: 2,
+  });
+  assert.equal(core.costSummaryText([{ __cacheHit: true, cost_estimate: { llm_calls: 0, estimated_input_tokens: 0 } }]), "0 LLM calls, ~0 input tokens, 1/1 cached");
+});
+
 test("nativeTestOutcome maps Ghost Test Catcher statuses to VS Code Testing states", () => {
   assert.equal(core.nativeTestOutcome("supported", "passed"), "passed");
   assert.equal(core.nativeTestOutcome("supported", "skipped"), "skipped");
@@ -333,6 +363,12 @@ test("renderReportHtml escapes user-controlled text and includes exact evidence 
         reliability_score: 0.1,
         components: { etv_score: 0 },
       },
+      cost_estimate: {
+        llm_call_path: "existing_test_review",
+        llm_calls: 0,
+        estimated_input_tokens: 0,
+        estimated_output_token_ceiling: 0,
+      },
       execution: {
         status: "failed",
         passed: 0,
@@ -359,6 +395,9 @@ test("renderReportHtml escapes user-controlled text and includes exact evidence 
   ]);
 
   assert.ok(html.includes("Ghost Test Catcher"));
+  assert.ok(html.includes("Cost and cache: 0 LLM calls"));
+  assert.ok(html.includes("LLM Calls"));
+  assert.ok(html.includes("Est. Input Tokens"));
   assert.ok(html.includes("Content-Security-Policy"));
   assert.ok(html.includes("default-src 'none'"));
   assert.ok(html.includes("filter-verdict"));

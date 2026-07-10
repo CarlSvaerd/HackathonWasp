@@ -40,7 +40,7 @@ from llmSHAP.webapp.analysis import (  # noqa: E402
 
 
 WEBAPP_OUTPUT_TOKEN_CEILING_PER_CALL = 700
-CLI_OUTPUT_TOKEN_CEILING_PER_CALL = 900
+CLI_OUTPUT_TOKEN_CEILING_PER_CALL = 700
 
 
 def main(argv: list[str] | None = None) -> int:

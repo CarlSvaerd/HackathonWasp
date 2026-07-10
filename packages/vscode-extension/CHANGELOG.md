@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added visible report and notification cost summaries for LLM calls, estimated input tokens, output token ceilings, and analysis cache hits.
+- Added clearer first-run setup profile details that explain local, static-only, and Docker modes in terms of safety and cost.
+- Documented that existing-test review in VS Code uses local analysis and optional pytest execution with `0` LLM calls.
+
 ## 0.2.0
 
 - Added Marketplace-ready README screenshots for the report panel, inline diagnostics, and native Testing panel integration.

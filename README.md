@@ -331,6 +331,20 @@ The installed command is also available after package installation:
 ghost-test-catcher analyze --repo . --tests tests/test_webapp_execution.py --source src
 ```
 
+Existing-test analysis is the recommended low-cost workflow: it uses local parsing, source evidence checks, similarity scoring, and optional pytest execution with `0` LLM calls.
+
+Optional LLM-backed generation is available when you explicitly want Ghost Test Catcher to generate tests before checking them:
+
+```bash
+ghost-test-catcher generate-and-check \
+  --repo . \
+  --source src \
+  --test-mode mixed \
+  --max-output-tokens 700
+```
+
+Use `--max-output-tokens` to cap the requested output tokens per model call. The default is `700`, which keeps optional generation cheaper while still leaving enough room for a small pytest pack.
+
 Run the built-in calibration suite to confirm the checker still separates grounded tests from ghost-risk tests:
 
 ```bash

@@ -56,6 +56,7 @@ The extension also contributes a VS Code walkthrough and shows a one-time setup 
 - **Filterable report panel:** review reliability, ETV, framework, run status, risk categories, recommendations, source evidence, and missing symbols.
 - **Native Testing panel:** discovers Python tests and runs `Analyze with Ghost Test Catcher` as a VS Code test profile.
 - **Persistent cache:** restores valid diagnostics, CodeLens, and reports after reloads and avoids unnecessary reruns.
+- **Visible cost and cache signals:** reports and completion messages show LLM call estimates, token estimates, and whether results came from cache.
 - **Quick Fix actions:** open evidence files, copy missing symbols, and rerun static-only analysis.
 - **CI generator:** writes a ready-to-use GitHub Actions gate with `Ghost Test Catcher: Add GitHub Actions Gate`.
 - **Docker backend:** optionally execute tests through a configured Docker image with network disabled.
@@ -127,6 +128,8 @@ Use the `Analyze with Ghost Test Catcher` run profile from the Testing panel to 
 Run `Ghost Test Catcher: Setup` first in a new workspace. Choose the recommended local mode for normal development, static-only mode when reviewing untrusted generated tests, or Docker mode when the team wants execution isolation. Setup updates `ghostTestCatcher.pythonPath`, `ghostTestCatcher.executeTests`, `ghostTestCatcher.executionBackend`, and `ghostTestCatcher.confirmExecution` at workspace scope, then opens Doctor so the result is visible.
 
 Analysis results are cached per workspace using the project root, test path, source context, settings, and file fingerprints. Valid cached reports are restored after a VS Code reload and are reused by command-palette and Testing panel runs. When a relevant Python file changes, stale diagnostics and cache entries are invalidated.
+
+The normal VS Code review path analyzes existing tests with local parsing, source evidence checks, similarity scoring, and optional pytest execution. It does not call an LLM. The report panel displays this as `0 LLM calls` and marks whether each result was fresh or served from cache.
 
 Diagnostics expose Quick Fixes for common review actions: open the best evidence file at the reported line, copy missing symbols to the clipboard, or rerun the selected file with static analysis only. The report panel includes client-side filters and expandable evidence details for larger review sessions.
 

@@ -1,6 +1,6 @@
 {
-  "commit": "c3d2f5e",
-  "generated_at": "2026-07-10T04:22:49+02:00",
+  "commit": "59f0577",
+  "generated_at": "2026-07-10T04:29:13+02:00",
   "limits": [
     "These are repository-local benchmark and demo metrics, not independent third-party benchmarks.",
     "Token estimates use a conservative character-to-token approximation of ceil(characters / 4).",
@@ -14,7 +14,7 @@
         {
           "actual_verdict": "reliable",
           "description": "A simple test imports and asserts behavior that exists in the source file.",
-          "duration_seconds": 0.257,
+          "duration_seconds": 0.235,
           "etv_score": 1.0,
           "execution_status": "passed",
           "expected_verdict": "reliable",
@@ -28,7 +28,7 @@
         {
           "actual_verdict": "ghost_risk",
           "description": "A test imports a module that is not present in the source context.",
-          "duration_seconds": 0.353,
+          "duration_seconds": 0.33,
           "etv_score": 0.0,
           "execution_status": "failed",
           "expected_verdict": "ghost_risk",
@@ -46,7 +46,7 @@
         {
           "actual_verdict": "reliable",
           "description": "A test asserts a real failure path with pytest.raises and a built-in exception class.",
-          "duration_seconds": 0.257,
+          "duration_seconds": 0.248,
           "etv_score": 1.0,
           "execution_status": "passed",
           "expected_verdict": "reliable",
@@ -60,7 +60,7 @@
         {
           "actual_verdict": "reliable",
           "description": "A repository test imports an existing private helper; this should be flagged as real evidence, not a missing symbol.",
-          "duration_seconds": 0.268,
+          "duration_seconds": 0.251,
           "etv_score": 1.0,
           "execution_status": "passed",
           "expected_verdict": "reliable",
@@ -74,7 +74,7 @@
         {
           "actual_verdict": "reliable",
           "description": "A test constructs a real class and calls a real method on the instance.",
-          "duration_seconds": 0.269,
+          "duration_seconds": 0.233,
           "etv_score": 1.0,
           "execution_status": "passed",
           "expected_verdict": "reliable",
@@ -88,7 +88,7 @@
         {
           "actual_verdict": "reliable",
           "description": "A test uses local variable names around a real source function; local names must not be treated as missing APIs.",
-          "duration_seconds": 0.267,
+          "duration_seconds": 0.241,
           "etv_score": 1.0,
           "execution_status": "passed",
           "expected_verdict": "reliable",
@@ -102,7 +102,7 @@
         {
           "actual_verdict": "ghost_risk",
           "description": "A product-level test invents orchestration that low-level source helpers do not implement.",
-          "duration_seconds": 0.282,
+          "duration_seconds": 0.264,
           "etv_score": 0.0,
           "execution_status": "failed",
           "expected_verdict": "ghost_risk",
@@ -121,7 +121,7 @@
           "test_count": 1
         }
       ],
-      "duration_seconds": 1.951,
+      "duration_seconds": 1.802,
       "estimated_input_tokens": 0,
       "estimated_output_tokens": 0,
       "execute_tests": true,
@@ -132,7 +132,7 @@
       "total_count": 7
     },
     "demo_project": {
-      "duration_seconds": 0.281,
+      "duration_seconds": 0.259,
       "estimated_input_tokens": 0,
       "estimated_output_tokens": 0,
       "etv_breakdown": {
@@ -167,7 +167,7 @@
       "test_count": 7,
       "test_file_count": 2,
       "test_line_count": 70,
-      "tests_per_second": 24.911,
+      "tests_per_second": 27.027,
       "top_evidence_files": [
         "src/auth_service.py",
         "src/http_api.py"
@@ -205,7 +205,7 @@
         "mean_estimated_input_tokens_per_call": 1366.3333,
         "policy_name": "current_policy_counterfactual_after_two_files",
         "rendered_prompt_characters": 32781,
-        "requested_output_token_ceiling_cli": 5400,
+        "requested_output_token_ceiling_cli": 4200,
         "requested_output_token_ceiling_webapp": 4200,
         "sampler": "counterfactual"
       },
@@ -260,7 +260,7 @@
         "mean_estimated_input_tokens_per_call": 1117.5625,
         "policy_name": "previous_policy_full_enumeration_up_to_four_files",
         "rendered_prompt_characters": 71497,
-        "requested_output_token_ceiling_cli": 14400,
+        "requested_output_token_ceiling_cli": 11200,
         "requested_output_token_ceiling_webapp": 11200,
         "sampler": "full_enumeration"
       },
@@ -287,8 +287,8 @@
   },
   "safe_claims": [
     "Existing-test review in the VS Code extension, CLI analyze command, and CI gate uses 0 LLM calls and 0 estimated LLM tokens.",
-    "The built-in calibration suite matched expected verdicts on 7/7 scenarios in 1.951 seconds.",
-    "The demo project analysis reviewed 7 Python tests across 2 test files and 2 source files in 0.281 seconds with verdict 'reliable'.",
+    "The built-in calibration suite matched expected verdicts on 7/7 scenarios in 1.802 seconds.",
+    "The demo project analysis reviewed 7 Python tests across 2 test files and 2 source files in 0.259 seconds with verdict 'reliable'.",
     "For the optional 4-file generate-and-check sample, the attribution policy reduces estimated LLM calls from 16 to 6 (62.5% fewer calls).",
     "For that same optional generation sample, estimated input tokens drop from 17881 to 8198 (54.2% fewer estimated input tokens)."
   ]

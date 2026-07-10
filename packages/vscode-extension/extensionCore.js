@@ -418,6 +418,59 @@ function summarizeReports(reports) {
   );
 }
 
+function costEstimateForReport(result) {
+  const estimate = result?.cost_estimate || {};
+  return {
+    llmCalls: nonNegativeNumber(estimate.llm_calls),
+    estimatedInputTokens: nonNegativeNumber(estimate.estimated_input_tokens),
+    estimatedOutputTokens: nonNegativeNumber(estimate.estimated_output_tokens),
+    estimatedOutputTokenCeiling: nonNegativeNumber(estimate.estimated_output_token_ceiling),
+    path: String(estimate.llm_call_path || (result?.analysis_mode === "generate_and_check" ? "optional_generate_and_check" : "existing_test_review")),
+    sampler: String(estimate.sampler || result?.sampler || ""),
+  };
+}
+
+function summarizeCost(reports) {
+  return (reports || []).reduce(
+    (summary, result) => {
+      const estimate = costEstimateForReport(result);
+      summary.llmCalls += estimate.llmCalls;
+      summary.estimatedInputTokens += estimate.estimatedInputTokens;
+      summary.estimatedOutputTokens += estimate.estimatedOutputTokens;
+      summary.estimatedOutputTokenCeiling += estimate.estimatedOutputTokenCeiling;
+      if (result?.__cacheHit) {
+        summary.cacheHits += 1;
+      }
+      summary.total += 1;
+      return summary;
+    },
+    {
+      llmCalls: 0,
+      estimatedInputTokens: 0,
+      estimatedOutputTokens: 0,
+      estimatedOutputTokenCeiling: 0,
+      cacheHits: 0,
+      total: 0,
+    }
+  );
+}
+
+function costSummaryText(reports) {
+  const summary = summarizeCost(reports);
+  const cacheText = summary.cacheHits
+    ? `${summary.cacheHits}/${summary.total} cached`
+    : "fresh analysis";
+  const outputText = summary.estimatedOutputTokenCeiling
+    ? `, output ceiling ${formatInteger(summary.estimatedOutputTokenCeiling)}`
+    : "";
+  return `${summary.llmCalls} LLM call${summary.llmCalls === 1 ? "" : "s"}, ~${formatInteger(summary.estimatedInputTokens)} input tokens${outputText}, ${cacheText}`;
+}
+
+function nonNegativeNumber(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
 function nativeTestOutcome(groundedStatus, executionStatus) {
   if (groundedStatus === "unsupported" || groundedStatus === "borderline") {
     return "failed";
@@ -471,6 +524,7 @@ function renderReportHtml(reports, options = {}) {
   <style>
     body { margin: 0; padding: 24px; color: #d4d4d4; background: #1e1e1e; font-family: var(--vscode-font-family); }
     h1, h2, h3 { color: #f3f3f3; margin: 0; }
+    .notice { margin-top: 14px; padding: 12px 14px; border: 1px solid #3c3c3c; border-radius: 6px; background: #252526; color: #d4d4d4; }
     .toolbar { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 10px; margin: 16px 0 18px; padding: 12px; background: #252526; border: 1px solid #3c3c3c; border-radius: 6px; }
     .toolbar label { display: grid; gap: 5px; color: #bdbdbd; font-size: 12px; }
     .toolbar select, .toolbar input { background: #1e1e1e; color: #f3f3f3; border: 1px solid #3c3c3c; border-radius: 4px; padding: 7px; font-family: var(--vscode-font-family); min-width: 0; }
@@ -506,6 +560,7 @@ function renderReportHtml(reports, options = {}) {
 </head>
 <body>
   <h1>Ghost Test Catcher</h1>
+  <div class="notice">Cost and cache: ${escapeHtml(costSummaryText(reports))}. Existing-test review uses local analysis and does not call an LLM.</div>
   ${renderReportToolbar(frameworks)}
   <div id="ghost-empty" class="empty-state hidden">No tests match the current filters.</div>
   ${body}
@@ -677,6 +732,7 @@ function renderSingleReport(result) {
   const trust = result.trust_assessment || {};
   const execution = result.execution || {};
   const components = trust.components || {};
+  const cost = costEstimateForReport(result);
   const checks = mapBy(result.verification?.claim_checks || [], "claim");
   const runs = mapBy(result.execution?.per_test_results || [], "name");
   const rows = (result.generated_tests?.test_names || []).map((name) => {
@@ -727,6 +783,10 @@ function renderSingleReport(result) {
       ${metric("ETV", percent(Number(components.etv_score || 0)))}
       ${metric("Execution", execution.status || "unknown")}
       ${metric("Passed", `${execution.passed || 0}/${execution.test_count || 0}`)}
+      ${metric("Cache", result.__cacheHit ? "hit" : "fresh")}
+      ${metric("LLM Calls", formatInteger(cost.llmCalls))}
+      ${metric("Est. Input Tokens", formatInteger(cost.estimatedInputTokens))}
+      ${metric("Est. Output Ceiling", cost.estimatedOutputTokenCeiling ? formatInteger(cost.estimatedOutputTokenCeiling) : "0")}
     </div>
     <table>
       <thead>
@@ -783,6 +843,10 @@ function percent(value) {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+function formatInteger(value) {
+  return String(Math.round(Number(value || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -797,6 +861,8 @@ module.exports = {
   GHOST_CLI_MODULE,
   analysisCacheKey,
   buildAnalyzeArgs,
+  costEstimateForReport,
+  costSummaryText,
   defaultPythonCandidates,
   editableInstallArgs,
   escapeHtml,
@@ -820,6 +886,7 @@ module.exports = {
   relativePathFromRoot,
   resolveImportModulesToSourcePaths,
   summarizeReports,
+  summarizeCost,
   setupProfileSettings,
   supportLabel,
   toRelativeSourcePaths,

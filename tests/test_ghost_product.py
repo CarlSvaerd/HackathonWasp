@@ -6,7 +6,7 @@ from ghost_test_catcher.cli import main as public_main
 from llmSHAP.ghost.adapters import available_language_adapters, get_language_adapter
 from llmSHAP.ghost.analysis import analyze_existing_tests
 from llmSHAP.ghost.calibration import run_builtin_calibration
-from llmSHAP.ghost.cli import main
+from llmSHAP.ghost.cli import build_parser, main
 from llmSHAP.webapp.analysis import UploadedContextFile
 
 
@@ -32,6 +32,9 @@ def test_analyze_existing_tests_scores_grounded_pytest_file() -> None:
     assert result["generated_tests"]["test_names"] == ["test_add_returns_sum"]
     assert result["execution"]["status"] == "passed"
     assert result["trust_assessment"]["components"]["etv_score"] == 1.0
+    assert result["cost_estimate"]["llm_call_path"] == "existing_test_review"
+    assert result["cost_estimate"]["llm_calls"] == 0
+    assert result["cost_estimate"]["estimated_input_tokens"] == 0
     assert result["files"][0]["path"] == "calculator.py"
 
 
@@ -114,6 +117,16 @@ def test_public_cli_alias_outputs_doctor_json(tmp_path, capsys) -> None:
     assert exit_code == 0
     assert payload["repo_root"] == str(repo)
     assert payload["language_adapters"][0]["language_id"] == "python"
+
+
+def test_generate_and_check_parser_uses_bounded_output_token_default() -> None:
+    parser = build_parser()
+
+    default_args = parser.parse_args(["generate-and-check"])
+    custom_args = parser.parse_args(["generate-and-check", "--max-output-tokens", "512"])
+
+    assert default_args.max_output_tokens == 700
+    assert custom_args.max_output_tokens == 512
 
 
 def test_cli_analyze_accepts_docker_backend_for_static_analysis(tmp_path, capsys) -> None:

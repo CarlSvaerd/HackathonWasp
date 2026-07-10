@@ -371,7 +371,7 @@ async function analyzeFiles(testFiles, title, options = {}) {
       openLastReport();
       const summary = core.summarizeReports(reports);
       vscode.window.showInformationMessage(
-        `Ghost Test Catcher: ${summary.reliable} reliable, ${summary.needsReview} needs review, ${summary.ghostRisk} ghost risk.`
+        `Ghost Test Catcher: ${summary.reliable} reliable, ${summary.needsReview} needs review, ${summary.ghostRisk} ghost risk. Cost: ${core.costSummaryText(reports)}.`
       );
     }
   );
@@ -839,7 +839,7 @@ async function runNativeTestAnalysis(request, token) {
       codeLensChanged.fire();
       const summary = core.summarizeReports(reports);
       vscode.window.showInformationMessage(
-        `Ghost Test Catcher Testing: ${summary.reliable} reliable, ${summary.needsReview} needs review, ${summary.ghostRisk} ghost risk.`
+        `Ghost Test Catcher Testing: ${summary.reliable} reliable, ${summary.needsReview} needs review, ${summary.ghostRisk} ghost risk. Cost: ${core.costSummaryText(reports)}.`
       );
     }
   } catch (error) {
@@ -1099,16 +1099,19 @@ async function setupGhostTestCatcher(uri) {
         id: "local",
         label: "Recommended: local execution with confirmation",
         description: "Analyze tests and ask before executing Python test code.",
+        detail: "Best day-to-day mode. Existing-test review uses 0 LLM calls and only runs pytest after confirmation.",
       },
       {
         id: "static",
         label: "Static analysis only",
         description: "Never execute tests from VS Code; safest first-run mode.",
+        detail: "Cheapest and safest review mode. Uses 0 LLM calls and skips pytest execution entirely.",
       },
       {
         id: "docker",
         label: "Docker isolation",
         description: "Execute tests inside the configured Docker image.",
+        detail: "Still 0 LLM calls for existing tests, but isolates pytest in a container when Docker is available.",
       },
     ],
     {

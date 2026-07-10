@@ -96,6 +96,7 @@ def analyze_existing_tests(
         "preflight": preflight,
         "execution": execution,
         "trust_assessment": trust_assessment,
+        "cost_estimate": _existing_test_cost_estimate(),
         "files": weighted_files,
         "top_test_files": [],
         "input_test_files": [
@@ -146,6 +147,23 @@ def _build_static_weighted_files(files: list[UploadedContextFile], answer: str) 
         )
     weighted_files.sort(key=lambda item: item["weight"], reverse=True)
     return weighted_files
+
+
+def _existing_test_cost_estimate() -> dict:
+    return {
+        "llm_call_path": "existing_test_review",
+        "llm_calls": 0,
+        "estimated_input_tokens": 0,
+        "estimated_output_tokens": 0,
+        "output_token_ceiling_per_call": 0,
+        "estimated_output_token_ceiling": 0,
+        "token_estimator": "none",
+        "sampler": "static_similarity",
+        "notes": [
+            "Existing-test review uses local parsing, source-symbol checks, TF-IDF similarity, and optional pytest execution.",
+            "No LLM provider is called for the VS Code, CLI analyze, or CLI ci review path.",
+        ],
+    }
 
 
 def _skipped_execution(extracted_tests: dict, *, execution_backend: str = "local") -> dict:
