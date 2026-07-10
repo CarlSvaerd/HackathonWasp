@@ -1131,7 +1131,7 @@ async function setupGhostTestCatcher(uri) {
   }
 
   const config = getConfig();
-  const candidates = core.defaultPythonCandidates(config.get("pythonPath", "python"));
+  const candidates = core.defaultPythonCandidates(config.get("pythonPath", "python"), root);
   const setupState = await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,

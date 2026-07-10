@@ -89,6 +89,46 @@ test("setup helpers produce safe defaults for first-run onboarding", () => {
   assert.deepEqual(core.pypiInstallArgs(), ["-m", "pip", "install", "ghost-test-catcher[ghost]"]);
 });
 
+test("defaultPythonCandidates prefers workspace virtual environments before generic Python", () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), "ghost-python-env-"));
+  const venvScripts = path.join(project, ".venv", "Scripts");
+  fs.mkdirSync(venvScripts, { recursive: true });
+  const venvPython = path.join(venvScripts, "python.exe");
+  fs.writeFileSync(venvPython, "", "utf-8");
+
+  assert.deepEqual(core.defaultPythonCandidates("python", project, {}), [
+    venvPython,
+    "python",
+    "python3",
+  ]);
+});
+
+test("defaultPythonCandidates keeps explicit Python first and detects active envs", () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), "ghost-python-active-env-"));
+  const virtualEnv = path.join(project, "active-venv");
+  const condaEnv = path.join(project, "conda-env");
+  fs.mkdirSync(path.join(virtualEnv, "bin"), { recursive: true });
+  fs.mkdirSync(path.join(condaEnv, "Scripts"), { recursive: true });
+  const virtualEnvPython = path.join(virtualEnv, "bin", "python");
+  const condaPython = path.join(condaEnv, "Scripts", "python.exe");
+  fs.writeFileSync(virtualEnvPython, "", "utf-8");
+  fs.writeFileSync(condaPython, "", "utf-8");
+
+  assert.deepEqual(
+    core.defaultPythonCandidates("C:/Python311/python.exe", project, {
+      VIRTUAL_ENV: virtualEnv,
+      CONDA_PREFIX: condaEnv,
+    }),
+    [
+      "C:/Python311/python.exe",
+      virtualEnvPython,
+      condaPython,
+      "python",
+      "python3",
+    ]
+  );
+});
+
 test("reportTestNames safely reads generated test names", () => {
   assert.deepEqual(core.reportTestNames({ generated_tests: { test_names: ["test_a"] } }), ["test_a"]);
   assert.deepEqual(core.reportTestNames({}), []);

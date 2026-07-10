@@ -143,10 +143,19 @@ function shellArg(value) {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
-function defaultPythonCandidates(configuredPythonPath) {
+function defaultPythonCandidates(configuredPythonPath, root = "", environment = process.env) {
   const seen = new Set();
   const candidates = [];
-  for (const value of [configuredPythonPath, "python", "python3"]) {
+  const configured = String(configuredPythonPath || "").trim();
+  const explicitConfigured = configured && !isGenericPythonCommand(configured);
+  const values = [
+    ...(explicitConfigured ? [configured] : []),
+    ...localPythonCandidates(root, environment),
+    configured || "python",
+    "python",
+    "python3",
+  ];
+  for (const value of values) {
     const candidate = String(value || "").trim();
     if (!candidate || seen.has(candidate)) {
       continue;
@@ -155,6 +164,47 @@ function defaultPythonCandidates(configuredPythonPath) {
     candidates.push(candidate);
   }
   return candidates;
+}
+
+function localPythonCandidates(root = "", environment = process.env) {
+  const candidates = [];
+  const seen = new Set();
+  const envRoots = [
+    environment?.VIRTUAL_ENV,
+    environment?.CONDA_PREFIX,
+  ];
+  const projectRoots = root
+    ? [".venv", "venv", ".env", "env"].map((name) => path.join(root, name))
+    : [];
+
+  for (const candidateRoot of [...envRoots, ...projectRoots]) {
+    const resolvedRoot = String(candidateRoot || "").trim();
+    if (!resolvedRoot || seen.has(resolvedRoot)) {
+      continue;
+    }
+    seen.add(resolvedRoot);
+    for (const executable of pythonExecutablesInEnvironment(resolvedRoot)) {
+      if (fs.existsSync(executable)) {
+        candidates.push(executable);
+        break;
+      }
+    }
+  }
+  return candidates;
+}
+
+function pythonExecutablesInEnvironment(environmentRoot) {
+  return [
+    path.join(environmentRoot, "Scripts", "python.exe"),
+    path.join(environmentRoot, "Scripts", "python"),
+    path.join(environmentRoot, "bin", "python"),
+    path.join(environmentRoot, "bin", "python3"),
+  ];
+}
+
+function isGenericPythonCommand(command) {
+  const normalized = command.trim().toLowerCase();
+  return normalized === "python" || normalized === "python3";
 }
 
 function setupProfileSettings(profileId) {
@@ -875,6 +925,7 @@ module.exports = {
   mergeSourcePaths,
   nativeTestMessage,
   nativeTestOutcome,
+  localPythonCandidates,
   normalizePath,
   parseTestFunctionLocations,
   percent,

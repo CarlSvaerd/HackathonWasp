@@ -112,32 +112,36 @@ def draw_report() -> None:
     tag(draw, (970, 98), "1 needs review", "amber")
     tag(draw, (1124, 98), "1 ghost risk", "red")
 
-    toolbar = (116, 190, 1210, 252)
+    box(draw, (116, 184, 1210, 234), "panel", "border", 10)
+    text(draw, (138, 199), "Cost and cache: 0 LLM calls, ~0 input tokens, fresh analysis", "green", "body_bold")
+    text(draw, (710, 202), "Existing-test review stays local by default.", "muted", "small")
+
+    toolbar = (116, 258, 1210, 320)
     box(draw, toolbar, "panel", "border", 10)
     for i, label in enumerate(["Verdict: all", "Framework: pytest", "Evidence: auth_service", "Missing symbols", "Failed or risky"]):
         x = 138 + i * 208
-        draw.rounded_rectangle((x, 207, x + 180, 234), radius=6, fill="#0f172a", outline=COLORS["border"])
-        text(draw, (x + 10, 212), label, "muted", "small")
+        draw.rounded_rectangle((x, 275, x + 180, 302), radius=6, fill="#0f172a", outline=COLORS["border"])
+        text(draw, (x + 10, 280), label, "muted", "small")
 
     metrics = [
         ("Reliability", "82.0%", "green"),
         ("ETV", "75.0%", "blue"),
-        ("Execution", "3/4 passed", "amber"),
-        ("Risk", "missing API", "red"),
+        ("LLM calls", "0", "green"),
+        ("Cache", "fresh", "blue"),
     ]
     for i, (label, value, color) in enumerate(metrics):
         x = 116 + i * 277
-        box(draw, (x, 280, x + 250, 372), "panel", "border", 10)
-        text(draw, (x + 18, 302), label, "muted", "small_bold")
-        text(draw, (x + 18, 328), value, color, "h2")
+        box(draw, (x, 344, x + 250, 436), "panel", "border", 10)
+        text(draw, (x + 18, 366), label, "muted", "small_bold")
+        text(draw, (x + 18, 392), value, color, "h2")
 
-    table = (116, 405, 1210, 660)
+    table = (116, 468, 1210, 674)
     box(draw, table, "panel", "border", 10)
     headers = ["Test", "Grounding", "Run", "Evidence", "Recommendation"]
     xs = [138, 430, 594, 720, 980]
     for x, header in zip(xs, headers):
-        text(draw, (x, 426), header, "muted", "small_bold")
-    draw.line((132, 456, 1194, 456), fill=COLORS["border"], width=1)
+        text(draw, (x, 489), header, "muted", "small_bold")
+    draw.line((132, 519, 1194, 519), fill=COLORS["border"], width=1)
 
     rows = [
         ("test_login_accepts_valid_user", "Grounded", "passed", "auth_service.py:42", "Keep"),
@@ -145,7 +149,7 @@ def draw_report() -> None:
         ("test_refresh_token_rotation", "Needs review", "skipped", "http_api.py:31", "Check workflow"),
         ("test_admin_impersonation", "Ghost risk", "failed", "No evidence", "Rewrite against real API"),
     ]
-    y = 478
+    y = 538
     for name, grounding, run, evidence, recommendation in rows:
         color = "green" if grounding == "Grounded" else "amber" if grounding == "Needs review" else "red"
         text(draw, (138, y), name, "text", "small")
@@ -153,7 +157,7 @@ def draw_report() -> None:
         text(draw, (594, y), run, "green" if run == "passed" else "amber" if run == "skipped" else "red", "small_bold")
         text(draw, (720, y), evidence, "blue", "small")
         text(draw, (980, y), recommendation, "muted", "small")
-        y += 44
+        y += 38
 
     img.save(MEDIA / "screenshot-report.png")
 
