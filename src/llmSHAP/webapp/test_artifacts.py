@@ -21,6 +21,33 @@ COMMON_TEST_HELPERS = {
     "self",
     "cls",
 }
+COMMON_VALUE_METHODS = {
+    "add",
+    "append",
+    "clear",
+    "copy",
+    "count",
+    "discard",
+    "endswith",
+    "extend",
+    "format",
+    "get",
+    "index",
+    "insert",
+    "items",
+    "join",
+    "keys",
+    "lower",
+    "pop",
+    "remove",
+    "replace",
+    "setdefault",
+    "split",
+    "startswith",
+    "strip",
+    "upper",
+    "values",
+}
 BUILTIN_NAMES = set(dir(builtins))
 UNITTEST_ASSERTION_PREFIX = "assert"
 
@@ -172,12 +199,15 @@ def _collect_module_level_imports(tree: ast.Module) -> list[str]:
 def _collect_symbols(node: ast.AST) -> list[str]:
     symbols: set[str] = set()
     local_names = _collect_local_names(node)
+    project_like_locals = _collect_project_like_locals(node)
     for child in ast.walk(node):
         if isinstance(child, ast.Name):
             if _is_interesting_symbol(child.id) and child.id not in local_names:
                 symbols.add(child.id)
         elif isinstance(child, ast.Attribute):
             if _is_unittest_assertion_attribute(child):
+                continue
+            if child.attr in COMMON_VALUE_METHODS and _attribute_root_name(child) not in project_like_locals:
                 continue
             if _is_interesting_symbol(child.attr):
                 symbols.add(child.attr)
@@ -213,6 +243,50 @@ def _collect_imports(node: ast.AST) -> list[str]:
         elif isinstance(child, ast.ImportFrom) and child.module:
             imports.add(child.module)
     return sorted(imports)
+
+
+def _collect_project_like_locals(node: ast.AST) -> set[str]:
+    names: set[str] = set()
+    for child in ast.walk(node):
+        if isinstance(child, ast.Assign) and _is_project_like_constructor_call(child.value):
+            for target in child.targets:
+                names.update(_assignment_target_names(target))
+        elif isinstance(child, ast.AnnAssign) and _is_project_like_constructor_call(child.value):
+            names.update(_assignment_target_names(child.target))
+    return names
+
+
+def _assignment_target_names(target: ast.AST) -> set[str]:
+    if isinstance(target, ast.Name):
+        return {target.id}
+    if isinstance(target, (ast.Tuple, ast.List)):
+        names: set[str] = set()
+        for item in target.elts:
+            names.update(_assignment_target_names(item))
+        return names
+    return set()
+
+
+def _is_project_like_constructor_call(node: ast.AST | None) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    name = _callable_leaf_name(node.func)
+    return bool(name and name[:1].isupper() and _is_interesting_symbol(name))
+
+
+def _callable_leaf_name(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return ""
+
+
+def _attribute_root_name(node: ast.Attribute) -> str:
+    value = node.value
+    while isinstance(value, ast.Attribute):
+        value = value.value
+    return value.id if isinstance(value, ast.Name) else ""
 
 
 def _count_assertions(node: ast.AST) -> int:

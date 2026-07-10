@@ -1,5 +1,4 @@
 import time
-from tqdm.auto import tqdm
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from math import fsum
 
@@ -12,6 +11,29 @@ from llmSHAP.generation import Generation
 from llmSHAP.attribution import Attribution
 from llmSHAP.value_functions import ValueFunction
 from llmSHAP.types import Index, Optional
+
+try:
+    from tqdm.auto import tqdm
+except ImportError:  # pragma: no cover - exercised only in minimal local Python installs.
+    def tqdm(iterable=None, **kwargs):
+        return _NoOpProgress(iterable)
+
+
+class _NoOpProgress:
+    def __init__(self, iterable=None):
+        self.iterable = iterable if iterable is not None else ()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
+
+    def __iter__(self):
+        return iter(self.iterable)
+
+    def update(self, value: int = 1) -> None:
+        return None
 
 
 class ShapleyAttribution(AttributionFunction):

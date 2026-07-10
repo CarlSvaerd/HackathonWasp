@@ -297,7 +297,7 @@ def _python_exports(content: str) -> dict[str, list[str]]:
 
 
 def _select_sampler(file_count: int):
-    if file_count <= 4:
+    if file_count <= 2:
         return FullEnumerationSampler(file_count), "full_enumeration"
     return CounterfactualSampler(), "counterfactual"
 

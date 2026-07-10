@@ -1,0 +1,295 @@
+{
+  "commit": "c3d2f5e",
+  "generated_at": "2026-07-10T04:22:49+02:00",
+  "limits": [
+    "These are repository-local benchmark and demo metrics, not independent third-party benchmarks.",
+    "Token estimates use a conservative character-to-token approximation of ceil(characters / 4).",
+    "Actual OpenAI token accounting depends on the provider tokenizer, model, request metadata, and generated output length.",
+    "The zero-token claim applies to existing-test review through the VS Code extension, CLI analyze, and CLI ci workflows.",
+    "The optional generate-and-check workflow still uses an LLM by design because it generates tests before checking them."
+  ],
+  "metrics": {
+    "built_in_calibration": {
+      "cases": [
+        {
+          "actual_verdict": "reliable",
+          "description": "A simple test imports and asserts behavior that exists in the source file.",
+          "duration_seconds": 0.257,
+          "etv_score": 1.0,
+          "execution_status": "passed",
+          "expected_verdict": "reliable",
+          "missing_imports": [],
+          "missing_symbols": [],
+          "name": "grounded_add",
+          "passed": true,
+          "reliability_score": 0.8978,
+          "test_count": 1
+        },
+        {
+          "actual_verdict": "ghost_risk",
+          "description": "A test imports a module that is not present in the source context.",
+          "duration_seconds": 0.353,
+          "etv_score": 0.0,
+          "execution_status": "failed",
+          "expected_verdict": "ghost_risk",
+          "missing_imports": [
+            "billing"
+          ],
+          "missing_symbols": [
+            "charge_customer"
+          ],
+          "name": "missing_import",
+          "passed": true,
+          "reliability_score": 0.2071,
+          "test_count": 1
+        },
+        {
+          "actual_verdict": "reliable",
+          "description": "A test asserts a real failure path with pytest.raises and a built-in exception class.",
+          "duration_seconds": 0.257,
+          "etv_score": 1.0,
+          "execution_status": "passed",
+          "expected_verdict": "reliable",
+          "missing_imports": [],
+          "missing_symbols": [],
+          "name": "grounded_exception_path",
+          "passed": true,
+          "reliability_score": 0.8147,
+          "test_count": 1
+        },
+        {
+          "actual_verdict": "reliable",
+          "description": "A repository test imports an existing private helper; this should be flagged as real evidence, not a missing symbol.",
+          "duration_seconds": 0.268,
+          "etv_score": 1.0,
+          "execution_status": "passed",
+          "expected_verdict": "reliable",
+          "missing_imports": [],
+          "missing_symbols": [],
+          "name": "private_helper_import",
+          "passed": true,
+          "reliability_score": 0.8527,
+          "test_count": 1
+        },
+        {
+          "actual_verdict": "reliable",
+          "description": "A test constructs a real class and calls a real method on the instance.",
+          "duration_seconds": 0.269,
+          "etv_score": 1.0,
+          "execution_status": "passed",
+          "expected_verdict": "reliable",
+          "missing_imports": [],
+          "missing_symbols": [],
+          "name": "class_method_flow",
+          "passed": true,
+          "reliability_score": 0.8651,
+          "test_count": 1
+        },
+        {
+          "actual_verdict": "reliable",
+          "description": "A test uses local variable names around a real source function; local names must not be treated as missing APIs.",
+          "duration_seconds": 0.267,
+          "etv_score": 1.0,
+          "execution_status": "passed",
+          "expected_verdict": "reliable",
+          "missing_imports": [],
+          "missing_symbols": [],
+          "name": "local_variables_not_missing_symbols",
+          "passed": true,
+          "reliability_score": 0.8459,
+          "test_count": 1
+        },
+        {
+          "actual_verdict": "ghost_risk",
+          "description": "A product-level test invents orchestration that low-level source helpers do not implement.",
+          "duration_seconds": 0.282,
+          "etv_score": 0.0,
+          "execution_status": "failed",
+          "expected_verdict": "ghost_risk",
+          "missing_imports": [],
+          "missing_symbols": [
+            "delivered",
+            "ingest_alert",
+            "open_dashboard",
+            "page_on_call_operator",
+            "resolution_history",
+            "status"
+          ],
+          "name": "invented_workflow",
+          "passed": true,
+          "reliability_score": 0.1597,
+          "test_count": 1
+        }
+      ],
+      "duration_seconds": 1.951,
+      "estimated_input_tokens": 0,
+      "estimated_output_tokens": 0,
+      "execute_tests": true,
+      "llm_calls": 0,
+      "ok": true,
+      "pass_count": 7,
+      "pass_rate": 1.0,
+      "total_count": 7
+    },
+    "demo_project": {
+      "duration_seconds": 0.281,
+      "estimated_input_tokens": 0,
+      "estimated_output_tokens": 0,
+      "etv_breakdown": {
+        "keepers": 7,
+        "risky": 0,
+        "salvageable": 0,
+        "total_tests": 7
+      },
+      "etv_score": 1.0,
+      "execute_tests": true,
+      "execution_counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 7,
+        "reported_test_count": 7
+      },
+      "execution_status": "passed",
+      "grounding_status_counts": {
+        "supported": 7
+      },
+      "llm_calls": 0,
+      "missing_import_count": 0,
+      "missing_symbol_count": 0,
+      "name": "demo/ghost_test_catcher_sample",
+      "per_test_execution_status_counts": {
+        "passed": 7
+      },
+      "preflight_status": "clear",
+      "reliability_score": 0.8536,
+      "source_file_count": 2,
+      "source_line_count": 145,
+      "test_count": 7,
+      "test_file_count": 2,
+      "test_line_count": 70,
+      "tests_per_second": 24.911,
+      "top_evidence_files": [
+        "src/auth_service.py",
+        "src/http_api.py"
+      ],
+      "verdict": "reliable"
+    },
+    "existing_test_review": {
+      "estimated_input_tokens": 0,
+      "estimated_output_tokens": 0,
+      "llm_calls": 0,
+      "token_cost_summary": "The core review path uses local AST parsing, source-symbol checks, TF-IDF similarity, and optional pytest execution. It does not call OpenAI or any other LLM.",
+      "workflow": "VS Code extension, CLI analyze, and CLI ci for existing Python tests"
+    },
+    "optional_generation_token_estimate": {
+      "current_policy": {
+        "coalition_sizes": [
+          0,
+          3,
+          3,
+          3,
+          3,
+          4
+        ],
+        "estimated_input_tokens": 8198,
+        "estimated_input_tokens_by_call": [
+          384,
+          1418,
+          1557,
+          1506,
+          1473,
+          1860
+        ],
+        "llm_calls": 6,
+        "max_estimated_input_tokens_per_call": 1860,
+        "mean_estimated_input_tokens_per_call": 1366.3333,
+        "policy_name": "current_policy_counterfactual_after_two_files",
+        "rendered_prompt_characters": 32781,
+        "requested_output_token_ceiling_cli": 5400,
+        "requested_output_token_ceiling_webapp": 4200,
+        "sampler": "counterfactual"
+      },
+      "estimator": "ceil(rendered_prompt_characters / 4)",
+      "file_count": 4,
+      "file_paths": [
+        "demo/integration_lab/BillingWorkflow.py",
+        "demo/integration_lab/CatalogPricing.py",
+        "demo/integration_lab/CustomerRecords.py",
+        "demo/integration_lab/InvoiceLedger.py"
+      ],
+      "previous_policy": {
+        "coalition_sizes": [
+          0,
+          1,
+          1,
+          1,
+          1,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          3,
+          3,
+          3,
+          3,
+          4
+        ],
+        "estimated_input_tokens": 17881,
+        "estimated_input_tokens_by_call": [
+          384,
+          761,
+          728,
+          677,
+          816,
+          1114,
+          1064,
+          1203,
+          1031,
+          1170,
+          1119,
+          1418,
+          1557,
+          1506,
+          1473,
+          1860
+        ],
+        "llm_calls": 16,
+        "max_estimated_input_tokens_per_call": 1860,
+        "mean_estimated_input_tokens_per_call": 1117.5625,
+        "policy_name": "previous_policy_full_enumeration_up_to_four_files",
+        "rendered_prompt_characters": 71497,
+        "requested_output_token_ceiling_cli": 14400,
+        "requested_output_token_ceiling_webapp": 11200,
+        "sampler": "full_enumeration"
+      },
+      "reduction": {
+        "cli_output_ceiling_reduction_percent": 62.5,
+        "estimated_input_token_reduction_percent": 54.1525,
+        "llm_call_reduction_percent": 62.5,
+        "webapp_output_ceiling_reduction_percent": 62.5
+      },
+      "sample_context": "demo/integration_lab",
+      "test_mode": "mixed",
+      "why_this_matters": "The optional generation workflow estimates file influence by re-running the model against different coalitions of uploaded files. Exact full enumeration is useful for tiny contexts, but it grows as 2^n. Counterfactual attribution keeps the request count roughly linear by comparing the full context to leave-one-file-out contexts plus the empty baseline."
+    }
+  },
+  "product": {
+    "name": "Ghost Test Catcher",
+    "one_sentence_pitch": "Ghost Test Catcher reviews Python tests against real source files so developers can spot grounded tests, salvageable tests, and ghost-risk tests before they merge AI-generated code.",
+    "primary_workflows": [
+      "VS Code extension commands and Testing panel integration",
+      "CLI analysis for existing tests",
+      "CI gate for pull requests",
+      "Optional OpenAI-backed generate-and-check workflow"
+    ]
+  },
+  "safe_claims": [
+    "Existing-test review in the VS Code extension, CLI analyze command, and CI gate uses 0 LLM calls and 0 estimated LLM tokens.",
+    "The built-in calibration suite matched expected verdicts on 7/7 scenarios in 1.951 seconds.",
+    "The demo project analysis reviewed 7 Python tests across 2 test files and 2 source files in 0.281 seconds with verdict 'reliable'.",
+    "For the optional 4-file generate-and-check sample, the attribution policy reduces estimated LLM calls from 16 to 6 (62.5% fewer calls).",
+    "For that same optional generation sample, estimated input tokens drop from 17881 to 8198 (54.2% fewer estimated input tokens)."
+  ]
+}

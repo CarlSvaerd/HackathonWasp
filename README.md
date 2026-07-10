@@ -37,6 +37,24 @@ The core idea is:
 > Passing tests are not enough.  
 > We also want to know whether those tests are actually supported by the code they claim to test.
 
+## Why Developers Should Try It
+
+Ghost Test Catcher is useful when a developer, team, or reviewer wants the speed of AI-generated tests without blindly trusting them.
+
+It helps answer questions that normal pytest output does not answer:
+
+- Did this test import real modules and real symbols?
+- Is the assertion supported by the source files?
+- Did the test pass for the right reason?
+- Is this test safe to keep, fix, or delete?
+- Can this test review run locally in VS Code before code reaches CI?
+
+The default VS Code and CLI review workflow for existing tests uses local analysis and optional local pytest execution. It does not call an LLM, which means it adds **0 estimated LLM tokens** while reviewing tests that already exist in the repository.
+
+For repeatable product metrics, token estimates, and marketing-safe claims, see:
+
+- [`docs/ghost-test-catcher-product-metrics.md`](docs/ghost-test-catcher-product-metrics.md)
+
 ## Core Concepts
 
 ### Reliability

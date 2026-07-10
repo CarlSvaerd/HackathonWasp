@@ -103,3 +103,81 @@ def test_summary_count_counts_labels():
     assert claim["status"] == "supported"
     assert claim["missing_symbols"] == []
     assert any("_summary_count -> src/reports.py:1" in item for item in claim["evidence_symbols"])
+
+
+def test_verify_answer_grounding_ignores_common_value_methods() -> None:
+    files = [
+        UploadedContextFile(
+            path="src/http_api.py",
+            content=(
+                "def login_handler(request_body):\n"
+                "    return {'status': 200, 'set_cookie': 'session=abc123; HttpOnly; Path=/'}\n\n"
+                "def me_handler(cookies):\n"
+                "    return {'status': 200, 'json': {'email': 'ada@example.com'}}\n"
+            ),
+            size_bytes=184,
+            line_count=5,
+            is_test_file=False,
+        )
+    ]
+
+    result = verify_answer_grounding(
+        """```python
+from src.http_api import login_handler, me_handler
+
+def test_login_cookie_can_be_reused_for_profile_lookup():
+    login_response = login_handler({"email": "ada@example.com"})
+    token = str(login_response["set_cookie"]).split("session=")[1].split(";")[0]
+    profile_response = me_handler({"session": token})
+
+    assert profile_response["status"] == 200
+```""",
+        files,
+    )
+
+    claim = result["claim_checks"][0]
+
+    assert claim["status"] == "supported"
+    assert "split" not in claim["mentioned_symbols"]
+    assert claim["missing_symbols"] == []
+
+
+def test_verify_answer_grounding_keeps_common_method_names_on_project_objects() -> None:
+    files = [
+        UploadedContextFile(
+            path="src/cart.py",
+            content=(
+                "class Cart:\n"
+                "    def __init__(self):\n"
+                "        self.items = []\n\n"
+                "    def add(self, sku):\n"
+                "        self.items.append(sku)\n\n"
+                "    def total(self):\n"
+                "        return len(self.items)\n"
+            ),
+            size_bytes=160,
+            line_count=9,
+            is_test_file=False,
+        )
+    ]
+
+    result = verify_answer_grounding(
+        """```python
+from src.cart import Cart
+
+def test_cart_adds_line_items():
+    cart = Cart()
+    cart.add("sku-123")
+
+    assert cart.total() == 1
+```""",
+        files,
+    )
+
+    claim = result["claim_checks"][0]
+
+    assert claim["status"] == "supported"
+    assert "add" in claim["mentioned_symbols"]
+    assert "total" in claim["mentioned_symbols"]
+    assert claim["missing_symbols"] == []
+    assert any("add -> src/cart.py:5" in item for item in claim["evidence_symbols"])
