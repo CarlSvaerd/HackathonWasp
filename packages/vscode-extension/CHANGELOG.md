@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.4
+
+- Split process execution, cancellation, path, nonce, and environment helpers out of the main extension host file into `extensionUtils.js`.
+- Added unit coverage for extracted extension utilities, including command execution, cancellation handling, path containment, and trusted-workspace `PYTHONPATH` construction.
+- Updated the VSIX output filename to `ghost-test-catcher-0.2.4.vsix`.
+
 ## 0.2.3
 
 - Fixed copied report summaries to display Effective Test Value from `trust_assessment.components.etv_score` instead of a stale legacy field.

@@ -449,7 +449,7 @@ npm run package
 
 `npm run test:integration` launches VS Code with `@vscode/test-electron`, opens the fixture Python workspace, activates the extension, runs Doctor, analyzes the active test file, checks Ghost Test Catcher diagnostics, and refreshes the Testing panel. Set `GHOST_TEST_CATCHER_TEST_PYTHON` if your desired Python executable is not named `python`.
 
-That produces `ghost-test-catcher-0.2.3.vsix`, installable through `Extensions: Install from VSIX...`.
+That produces `ghost-test-catcher-0.2.4.vsix`, installable through `Extensions: Install from VSIX...`.
 
 The extension package includes Marketplace metadata, a PNG icon, a changelog, and a `.vscodeignore` that excludes local build artifacts.
 The icon is reproducible:
