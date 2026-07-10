@@ -1203,11 +1203,13 @@ function metric(label, value) {
 }
 
 function toPosixPath(value) {
-  return value.split(path.sep).join("/");
+  return String(value).replace(/[\\/]+/g, "/");
 }
 
 function normalizePath(value) {
-  return path.resolve(value).toLowerCase();
+  const text = String(value);
+  const resolved = /^[A-Za-z]:[\\/]/.test(text) ? text : path.resolve(text);
+  return toPosixPath(resolved).toLowerCase();
 }
 
 function percent(value) {

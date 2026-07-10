@@ -2,10 +2,12 @@ const vscode = require("vscode");
 const fs = require("fs");
 const path = require("path");
 const core = require("./extensionCore");
+const diagnosticsModule = require("./extensionDiagnostics");
+const reportsModule = require("./extensionReports");
+const testingModule = require("./extensionTesting");
 const utils = require("./extensionUtils");
 
 const {
-  createNonce,
   isCancellationError,
   isInsideOrEqualPath,
   quoteForLog,
@@ -14,33 +16,26 @@ const {
 } = utils;
 
 let extensionContext;
-let diagnostics;
 let codeLensChanged;
-let reportPanel;
-let doctorPanel;
+let diagnosticManager;
+let reportPanels;
 let outputChannel;
-let testController;
-let testRunProfile;
+let testExplorer;
 let lastReports = [];
-const reportsByFile = new Map();
-const testItemMetadataById = new Map();
-const pendingTestRefreshes = new Map();
 const analysisCache = new Map();
-const quickFixContextByDiagnosticKey = new Map();
 const ANALYSIS_TIMEOUT_MS = 120000;
 const DOCTOR_TIMEOUT_MS = 30000;
 const SETUP_TIMEOUT_MS = 300000;
-const TEST_REFRESH_DELAY_MS = 250;
 const ANALYSIS_CACHE_STORAGE_KEY = "ghostTestCatcher.analysisCache.v1";
 const ANALYSIS_CACHE_MAX_ENTRIES = 100;
 const SETUP_NUDGE_STORAGE_KEY = "ghostTestCatcher.setupNudge.v1";
-const DISCOVERY_LIMIT_WARNING_INTERVAL_MS = 10 * 60 * 1000;
-let lastDiscoveryLimitWarningAt = 0;
 
 function activate(context) {
   extensionContext = context;
-  diagnostics = vscode.languages.createDiagnosticCollection("ghost-test-catcher");
+  const diagnostics = vscode.languages.createDiagnosticCollection("ghost-test-catcher");
   codeLensChanged = new vscode.EventEmitter();
+  diagnosticManager = new diagnosticsModule.GhostDiagnosticManager({ vscode, diagnostics, codeLensChanged });
+  reportPanels = new reportsModule.GhostReportPanels({ vscode, createNonce: utils.createNonce });
   outputChannel = vscode.window.createOutputChannel("Ghost Test Catcher");
   loadAnalysisCache();
 
@@ -61,59 +56,31 @@ function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.openEvidence", openEvidence));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.copyMissingSymbols", copyMissingSymbols));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.runStaticAnalysisForFile", runStaticAnalysisForFile));
-  context.subscriptions.push(vscode.languages.registerCodeLensProvider({ language: "python" }, new GhostCodeLensProvider()));
-  context.subscriptions.push(vscode.languages.registerCodeActionsProvider(
-    { language: "python" },
-    new GhostCodeActionProvider(),
-    { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }
-  ));
-  setupTestController(context);
+  diagnosticManager.register(context);
+  testExplorer = new testingModule.GhostTestExplorer({
+    vscode,
+    getConfig,
+    getWorkspaceFolderForFile,
+    runCli,
+    resolveExecutionMode,
+    publishResult,
+    onReports: updateLastReports,
+    onPythonFileChanged: handlePythonFileChanged,
+    onPythonFileDeleted: handlePythonFileDeleted,
+    logOutput,
+  });
+  testExplorer.register(context);
   restoreCachedReports().catch((error) => logOutput(`Failed to restore cached reports: ${error.message}`));
   maybeShowSetupNudge(context).catch((error) => logOutput(`Setup nudge failed: ${error.message}`));
 }
 
 function deactivate() {
-  if (diagnostics) {
-    diagnostics.clear();
-  }
-  for (const timer of pendingTestRefreshes.values()) {
-    clearTimeout(timer);
-  }
-  pendingTestRefreshes.clear();
-}
-
-function setupTestController(context) {
-  testController = vscode.tests.createTestController("ghostTestCatcher", "Ghost Test Catcher");
-  testController.resolveHandler = async (item) => {
-    if (!item) {
-      await discoverWorkspaceTests();
-      return;
-    }
-    const metadata = testItemMetadataById.get(item.id);
-    if (metadata?.type === "file" && item.uri) {
-      await refreshTestFile(item.uri);
-    }
-  };
-  testRunProfile = testController.createRunProfile(
-    "Analyze with Ghost Test Catcher",
-    vscode.TestRunProfileKind.Run,
-    runNativeTestAnalysis,
-    true
-  );
-
-  const watcher = vscode.workspace.createFileSystemWatcher("**/*.py");
-  watcher.onDidCreate(handlePythonFileChanged, null, context.subscriptions);
-  watcher.onDidChange(handlePythonFileChanged, null, context.subscriptions);
-  watcher.onDidDelete(handlePythonFileDeleted, null, context.subscriptions);
-
-  context.subscriptions.push(testController);
-  context.subscriptions.push(testRunProfile);
-  context.subscriptions.push(watcher);
+  diagnosticManager?.clear();
+  testExplorer?.dispose();
 }
 
 async function refreshTestExplorer() {
-  await discoverWorkspaceTests();
-  vscode.window.showInformationMessage("Ghost Test Catcher refreshed the Testing panel.");
+  await testExplorer?.refreshTestExplorer();
 }
 
 async function openSetupGuide() {
@@ -386,8 +353,7 @@ async function analyzeFiles(testFiles, title, options = {}) {
           const result = await runCli(testFile, executeTests, options.sourceFiles || [], token);
           result.__testFile = testFile;
           reports.push(result);
-          applyDiagnostics(testFile, result);
-          reportsByFile.set(core.normalizePath(testFile), result);
+          publishResult(testFile, result);
           progress.report({
             increment: testFiles.length ? 100 / testFiles.length : 100,
           });
@@ -404,8 +370,7 @@ async function analyzeFiles(testFiles, title, options = {}) {
       if (!reports.length) {
         return;
       }
-      lastReports = reports;
-      codeLensChanged.fire();
+      updateLastReports(reports);
       openLastReport();
       const summary = core.summarizeReports(reports);
       vscode.window.showInformationMessage(
@@ -413,6 +378,15 @@ async function analyzeFiles(testFiles, title, options = {}) {
       );
     }
   );
+}
+
+function publishResult(testFile, result) {
+  diagnosticManager?.publish(testFile, result);
+}
+
+function updateLastReports(reports) {
+  lastReports = reports;
+  diagnosticManager?.fireCodeLensChanged();
 }
 
 async function resolveExecutionMode(options = {}) {
@@ -598,19 +572,17 @@ async function restoreCachedReports() {
     result.__sourcePaths = metadata.sourcePaths;
     result.__inferredSourcePaths = result.__inferredSourcePaths || [];
     result.__cacheHit = true;
-    reportsByFile.set(core.normalizePath(metadata.testFile), result);
     try {
-      applyDiagnostics(metadata.testFile, result);
+      publishResult(metadata.testFile, result);
       restored.push(result);
     } catch (error) {
       logOutput(`Could not restore cached diagnostics for ${metadata.testFile}: ${error.message}`);
     }
   }
   if (restored.length) {
-    lastReports = restored
+    updateLastReports(restored
       .sort((left, right) => String(left.__testFile || "").localeCompare(String(right.__testFile || "")))
-      .slice(0, 20);
-    codeLensChanged.fire();
+      .slice(0, 20));
     logOutput(`Restored ${restored.length} cached Ghost Test Catcher report${restored.length === 1 ? "" : "s"}.`);
   }
   if (pruned) {
@@ -738,347 +710,15 @@ function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-async function discoverWorkspaceTests() {
-  if (!testController || !vscode.workspace.workspaceFolders?.length) {
-    return;
-  }
-
-  const limit = getConfig().get("testDiscoveryLimit", 500);
-  const exclude = "{**/.git/**,**/.hg/**,**/.mypy_cache/**,**/.pytest_cache/**,**/.ruff_cache/**,**/.tox/**,**/.venv/**,**/venv/**,**/__pycache__/**,**/build/**,**/dist/**,**/node_modules/**,**/docs/_build/**}";
-  const uris = await vscode.workspace.findFiles("**/*.py", exclude, limit);
-  const hitDiscoveryLimit = uris.length >= limit;
-  const discoveredFiles = new Set();
-
-  for (const uri of uris) {
-    if (!core.isTestPath(uri.fsPath)) {
-      continue;
-    }
-    discoveredFiles.add(core.normalizePath(uri.fsPath));
-    await refreshTestFile(uri);
-  }
-
-  for (const filePath of knownTestControllerFiles()) {
-    if (!fs.existsSync(filePath) || (!hitDiscoveryLimit && !discoveredFiles.has(core.normalizePath(filePath)))) {
-      removeTestFileItem(filePath);
-    }
-  }
-
-  if (hitDiscoveryLimit) {
-    await showDiscoveryLimitWarning(limit);
-  }
-}
-
-async function showDiscoveryLimitWarning(limit) {
-  const message = core.discoveryLimitWarningMessage(limit);
-  logOutput(message);
-
-  const now = Date.now();
-  if (now - lastDiscoveryLimitWarningAt < DISCOVERY_LIMIT_WARNING_INTERVAL_MS) {
-    return;
-  }
-  lastDiscoveryLimitWarningAt = now;
-
-  const increaseAction = "Increase Limit";
-  const settingsAction = "Open Settings";
-  const choice = await vscode.window.showWarningMessage(message, increaseAction, settingsAction, "Dismiss");
-  if (choice === settingsAction) {
-    await vscode.commands.executeCommand("workbench.action.openSettings", "ghostTestCatcher.testDiscoveryLimit");
-    return;
-  }
-  if (choice === increaseAction) {
-    const nextLimit = core.nextDiscoveryLimit(limit);
-    await getConfig().update("testDiscoveryLimit", nextLimit, vscode.ConfigurationTarget.Workspace);
-    vscode.window.showInformationMessage(`Ghost Test Catcher test discovery limit increased to ${nextLimit}.`);
-    await discoverWorkspaceTests();
-  }
-}
-
-async function refreshTestFile(uri) {
-  if (!testController || !uri || uri.scheme !== "file") {
-    return;
-  }
-
-  const testFile = uri.fsPath;
-  if (!core.isPythonPath(testFile) || !core.isTestPath(testFile)) {
-    removeTestFileItem(testFile);
-    return;
-  }
-
-  let text;
-  try {
-    text = await fs.promises.readFile(testFile, "utf-8");
-  } catch (error) {
-    removeTestFileItem(testFile);
-    return;
-  }
-
-  const locations = core.parseTestFunctionLocations(text);
-  if (!locations.length) {
-    removeTestFileItem(testFile);
-    return;
-  }
-
-  const fileId = testFileItemId(testFile);
-  const workspaceFolder = getWorkspaceFolderForFile(testFile);
-  const root = workspaceFolder
-    ? core.findProjectRootForFile(testFile, workspaceFolder.uri.fsPath)
-    : path.dirname(testFile);
-  const label = core.relativePathFromRoot(root, testFile) || path.basename(testFile);
-  let fileItem = testController.items.get(fileId);
-  if (!fileItem) {
-    fileItem = testController.createTestItem(fileId, label, uri);
-    testController.items.add(fileItem);
-  }
-  fileItem.label = label;
-  fileItem.canResolveChildren = false;
-  clearTestMetadataForFile(testFile);
-  testItemMetadataById.set(fileId, { type: "file", filePath: testFile });
-
-  const childItems = locations.map((location) => {
-    const qualifiedName = location.qualifiedName || location.name;
-    const item = testController.createTestItem(testCaseItemId(testFile, qualifiedName), qualifiedName, uri);
-    item.range = new vscode.Range(location.line, location.start, location.line, location.end);
-    testItemMetadataById.set(item.id, {
-      type: "test",
-      filePath: testFile,
-      name: location.name,
-      qualifiedName,
-    });
-    return item;
-  });
-  fileItem.children.replace(childItems);
-}
-
-async function runNativeTestAnalysis(request, token) {
-  const run = testController.createTestRun(request, "Ghost Test Catcher");
-  const completed = new Set();
-  try {
-    await ensureTestsResolvedForRequest(request, token);
-    const selectedItems = collectRunnableTestItems(request);
-    if (!selectedItems.length) {
-      return;
-    }
-
-    for (const item of selectedItems) {
-      run.enqueued(item);
-    }
-
-    const executionMode = await resolveExecutionMode();
-    if (!executionMode) {
-      for (const item of selectedItems) {
-        run.skipped(item);
-        completed.add(item.id);
-      }
-      return;
-    }
-
-    const reports = [];
-    const groupedItems = groupTestItemsByFile(selectedItems);
-    for (const [testFile, items] of groupedItems) {
-      throwIfCancellationRequested(token, "Ghost Test Catcher native test run was cancelled.");
-      for (const item of items) {
-        run.started(item);
-      }
-
-      try {
-        const result = await runCli(testFile, executionMode.executeTests, [], token);
-        result.__testFile = testFile;
-        reports.push(result);
-        applyDiagnostics(testFile, result);
-        reportsByFile.set(core.normalizePath(testFile), result);
-        applyNativeTestResults(run, items, result, completed);
-      } catch (error) {
-        if (isCancellationError(error)) {
-          for (const item of items) {
-            if (!completed.has(item.id)) {
-              run.skipped(item);
-              completed.add(item.id);
-            }
-          }
-          vscode.window.showInformationMessage("Ghost Test Catcher Testing run cancelled.");
-          return;
-        }
-        logOutput(`Testing panel analysis failed for ${testFile}: ${error.message}`);
-        for (const item of items) {
-          if (!completed.has(item.id)) {
-            run.errored(item, new vscode.TestMessage(error.message));
-            completed.add(item.id);
-          }
-        }
-      }
-    }
-
-    for (const item of selectedItems) {
-      if (!completed.has(item.id)) {
-        run.skipped(item);
-      }
-    }
-
-    if (reports.length) {
-      lastReports = reports;
-      codeLensChanged.fire();
-      const summary = core.summarizeReports(reports);
-      vscode.window.showInformationMessage(
-        `Ghost Test Catcher Testing: ${summary.reliable} reliable, ${summary.needsReview} needs review, ${summary.ghostRisk} ghost risk. Cost: ${core.costSummaryText(reports)}.`
-      );
-    }
-  } catch (error) {
-    if (isCancellationError(error)) {
-      vscode.window.showInformationMessage("Ghost Test Catcher Testing run cancelled.");
-      return;
-    }
-    logOutput(`Testing panel run failed: ${error.message}`);
-    vscode.window.showErrorMessage(`Ghost Test Catcher Testing failed: ${error.message}`);
-  } finally {
-    run.end();
-  }
-}
-
-async function ensureTestsResolvedForRequest(request, token) {
-  throwIfCancellationRequested(token, "Ghost Test Catcher native test run was cancelled.");
-  if (!request.include || !request.include.length) {
-    await discoverWorkspaceTests();
-    return;
-  }
-
-  const fileUris = new Map();
-  for (const item of request.include) {
-    const metadata = testItemMetadataById.get(item.id);
-    if (metadata?.type === "file" && item.uri) {
-      fileUris.set(core.normalizePath(item.uri.fsPath), item.uri);
-    }
-  }
-
-  for (const uri of fileUris.values()) {
-    throwIfCancellationRequested(token, "Ghost Test Catcher native test run was cancelled.");
-    await refreshTestFile(uri);
-  }
-}
-
-function applyNativeTestResults(run, items, result, completed) {
-  const checks = core.mapBy(result.verification?.claim_checks || [], "claim");
-  const runs = core.mapBy(result.execution?.per_test_results || [], "name");
-
-  for (const item of items) {
-    const metadata = testItemMetadataById.get(item.id);
-    if (!metadata) {
-      run.errored(item, new vscode.TestMessage("Ghost Test Catcher could not resolve metadata for this test item."));
-      completed.add(item.id);
-      continue;
-    }
-
-    const check = lookupByTestName(checks, metadata) || {};
-    const execution = lookupByTestName(runs, metadata) || {};
-    if (!check.status && !execution.status) {
-      run.errored(item, new vscode.TestMessage(`Ghost Test Catcher did not return a result for ${metadata.qualifiedName}.`));
-      completed.add(item.id);
-      continue;
-    }
-
-    const groundedStatus = check.status || "unsupported";
-    const executionStatus = execution.status || "unknown";
-    const outcome = core.nativeTestOutcome(groundedStatus, executionStatus);
-    const message = new vscode.TestMessage(core.nativeTestMessage({
-      name: metadata.qualifiedName,
-      groundedStatus,
-      executionStatus,
-      confidence: check.confidence,
-      missingSymbols: check.missing_symbols || [],
-      riskCategories: check.risk_categories || [],
-      recommendation: check.recommendation || "",
-    }));
-
-    if (outcome === "passed") {
-      run.passed(item);
-    } else if (outcome === "failed") {
-      run.failed(item, message);
-    } else {
-      run.skipped(item);
-    }
-    completed.add(item.id);
-  }
-}
-
-function collectRunnableTestItems(request) {
-  const excluded = new Set();
-  for (const item of request.exclude || []) {
-    collectTestItemIds(item, excluded);
-  }
-
-  const roots = request.include && request.include.length
-    ? request.include
-    : testItemCollectionToArray(testController.items);
-  const selected = new Map();
-  for (const item of roots) {
-    collectLeafTestItems(item, excluded, selected);
-  }
-  return Array.from(selected.values());
-}
-
-function collectLeafTestItems(item, excluded, selected) {
-  if (excluded.has(item.id)) {
-    return;
-  }
-  const metadata = testItemMetadataById.get(item.id);
-  if (metadata?.type === "test") {
-    selected.set(item.id, item);
-    return;
-  }
-  item.children.forEach((child) => collectLeafTestItems(child, excluded, selected));
-}
-
-function collectTestItemIds(item, ids) {
-  ids.add(item.id);
-  item.children.forEach((child) => collectTestItemIds(child, ids));
-}
-
-function groupTestItemsByFile(items) {
-  const grouped = new Map();
-  for (const item of items) {
-    const metadata = testItemMetadataById.get(item.id);
-    if (!metadata?.filePath) {
-      continue;
-    }
-    if (!grouped.has(metadata.filePath)) {
-      grouped.set(metadata.filePath, []);
-    }
-    grouped.get(metadata.filePath).push(item);
-  }
-  return grouped;
-}
-
-function lookupByTestName(items, metadata) {
-  return items.get(metadata.qualifiedName) || items.get(metadata.name);
-}
-
-function testItemCollectionToArray(collection) {
-  const items = [];
-  collection.forEach((item) => items.push(item));
-  return items;
-}
-
-function knownTestControllerFiles() {
-  const files = new Set();
-  for (const metadata of testItemMetadataById.values()) {
-    if (metadata.type === "file") {
-      files.add(metadata.filePath);
-    }
-  }
-  return files;
-}
-
 function handlePythonFileChanged(uri) {
   if (!uri || uri.scheme !== "file") {
     return;
   }
   invalidateAnalysisCacheForPath(uri.fsPath);
   if (core.isTestPath(uri.fsPath)) {
-    diagnostics.delete(uri);
-    reportsByFile.delete(core.normalizePath(uri.fsPath));
-    clearQuickFixContextsForFile(uri.fsPath);
-    codeLensChanged.fire();
+    diagnosticManager?.deleteFile(uri);
+    diagnosticManager?.fireCodeLensChanged();
   }
-  scheduleTestFileRefresh(uri);
 }
 
 function handlePythonFileDeleted(uri) {
@@ -1086,11 +726,8 @@ function handlePythonFileDeleted(uri) {
     return;
   }
   invalidateAnalysisCacheForPath(uri.fsPath);
-  diagnostics.delete(uri);
-  reportsByFile.delete(core.normalizePath(uri.fsPath));
-  clearQuickFixContextsForFile(uri.fsPath);
-  removeTestFileItem(uri.fsPath);
-  codeLensChanged.fire();
+  diagnosticManager?.deleteFile(uri);
+  diagnosticManager?.fireCodeLensChanged();
 }
 
 function invalidateAnalysisCacheForPath(changedPath) {
@@ -1114,49 +751,6 @@ function invalidateAnalysisCacheForPath(changedPath) {
   if (changed) {
     persistAnalysisCache().catch((error) => logOutput(`Failed to persist cache invalidation: ${error.message}`));
   }
-}
-
-function scheduleTestFileRefresh(uri) {
-  if (!uri || uri.scheme !== "file" || !core.isPythonPath(uri.fsPath)) {
-    return;
-  }
-  const key = core.normalizePath(uri.fsPath);
-  const existing = pendingTestRefreshes.get(key);
-  if (existing) {
-    clearTimeout(existing);
-  }
-  const timer = setTimeout(() => {
-    pendingTestRefreshes.delete(key);
-    refreshTestFile(uri).catch((error) => logOutput(`Failed to refresh Testing panel item for ${uri.fsPath}: ${error.message}`));
-  }, TEST_REFRESH_DELAY_MS);
-  pendingTestRefreshes.set(key, timer);
-}
-
-function removeTestFileItem(testFile) {
-  if (!testController) {
-    return;
-  }
-  const fileId = testFileItemId(testFile);
-  testController.items.delete(fileId);
-  clearTestMetadataForFile(testFile);
-}
-
-function clearTestMetadataForFile(testFile) {
-  const fileId = testFileItemId(testFile);
-  const childPrefix = `${fileId}:`;
-  for (const id of Array.from(testItemMetadataById.keys())) {
-    if (id === fileId || id.startsWith(childPrefix)) {
-      testItemMetadataById.delete(id);
-    }
-  }
-}
-
-function testFileItemId(testFile) {
-  return `ghost-file:${core.normalizePath(testFile)}`;
-}
-
-function testCaseItemId(testFile, qualifiedName) {
-  return `${testFileItemId(testFile)}:${qualifiedName}`;
 }
 
 async function setupGhostTestCatcher(uri) {
@@ -1578,201 +1172,11 @@ async function runDoctor(uri) {
 }
 
 function openDoctorReport(report) {
-  if (!doctorPanel) {
-    doctorPanel = vscode.window.createWebviewPanel(
-      "ghostTestCatcherDoctor",
-      "Ghost Test Catcher Doctor",
-      vscode.ViewColumn.Beside,
-      { enableScripts: false, retainContextWhenHidden: true, localResourceRoots: [] }
-    );
-    doctorPanel.onDidDispose(() => {
-      doctorPanel = undefined;
-    });
-  }
-
-  doctorPanel.webview.html = core.renderDoctorHtml(report);
-  doctorPanel.reveal(vscode.ViewColumn.Beside);
-}
-
-function applyDiagnostics(testFile, result) {
-  const uri = vscode.Uri.file(testFile);
-  const text = fs.readFileSync(testFile, "utf-8");
-  const locations = findTestFunctions(text);
-  const checks = core.mapBy(result.verification?.claim_checks || [], "claim");
-  const runs = core.mapBy(result.execution?.per_test_results || [], "name");
-  const names = result.generated_tests?.test_names || [];
-  const fileDiagnostics = [];
-  clearQuickFixContextsForFile(testFile);
-
-  for (const name of names) {
-    const check = checks.get(name) || {};
-    const run = runs.get(name) || {};
-    const range = locations.get(name) || new vscode.Range(0, 0, 0, 1);
-    const groundedStatus = check.status || "unsupported";
-    const executionStatus = run.status || "unknown";
-    const missing = check.missing_symbols || [];
-    const categories = check.risk_categories || [];
-    const confidence = core.percent(Number(check.confidence || 0));
-    const severity = diagnosticSeverity(groundedStatus, executionStatus);
-    const missingText = missing.length ? ` Missing symbols: ${missing.join(", ")}.` : "";
-    const categoryText = categories.length ? ` Categories: ${categories.join(", ")}.` : "";
-    const diagnostic = new vscode.Diagnostic(
-      range,
-      `Ghost Test Catcher: ${core.supportLabel(groundedStatus)} (${confidence} grounded), test run ${executionStatus}.${missingText}${categoryText}`,
-      severity
-    );
-    diagnostic.source = "Ghost Test Catcher";
-    diagnostic.code = "ghost-test-catcher";
-    fileDiagnostics.push(diagnostic);
-    quickFixContextByDiagnosticKey.set(diagnosticContextKey(testFile, diagnostic), {
-      testFile,
-      name,
-      evidence: check.evidence || null,
-      missingSymbols: missing,
-    });
-  }
-
-  diagnostics.set(uri, fileDiagnostics);
+  reportPanels?.openDoctorReport(report);
 }
 
 function openLastReport(explicitResult) {
-  const reports = explicitResult ? [explicitResult] : lastReports;
-  if (!reports.length) {
-    vscode.window.showInformationMessage("No Ghost Test Catcher report is available yet.");
-    return;
-  }
-
-  if (!reportPanel) {
-    reportPanel = vscode.window.createWebviewPanel(
-      "ghostTestCatcherReport",
-      "Ghost Test Catcher",
-      vscode.ViewColumn.Beside,
-      { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] }
-    );
-    reportPanel.onDidDispose(() => {
-      reportPanel = undefined;
-    });
-  }
-
-  reportPanel.webview.html = core.renderReportHtml(reports, { nonce: createNonce() });
-  reportPanel.reveal(vscode.ViewColumn.Beside);
-}
-
-class GhostCodeLensProvider {
-  get onDidChangeCodeLenses() {
-    return codeLensChanged.event;
-  }
-
-  provideCodeLenses(document) {
-    const result = reportsByFile.get(core.normalizePath(document.uri.fsPath));
-    if (!result) {
-      return [];
-    }
-    const locations = findTestFunctions(document.getText());
-    const checks = core.mapBy(result.verification?.claim_checks || [], "claim");
-    const runs = core.mapBy(result.execution?.per_test_results || [], "name");
-    return (result.generated_tests?.test_names || []).map((name) => {
-      const check = checks.get(name) || {};
-      const run = runs.get(name) || {};
-      const range = locations.get(name) || new vscode.Range(0, 0, 0, 1);
-      const title = `Ghost Test: ${core.supportLabel(check.status || "unsupported")} | run ${run.status || "unknown"} | ${core.percent(Number(check.confidence || 0))}`;
-      return new vscode.CodeLens(range, {
-        title,
-        command: "ghostTestCatcher.openLastReport",
-        arguments: [result],
-      });
-    });
-  }
-}
-
-class GhostCodeActionProvider {
-  provideCodeActions(document, range, context) {
-    const actions = [];
-    for (const diagnostic of context.diagnostics || []) {
-      if (diagnostic.source !== "Ghost Test Catcher") {
-        continue;
-      }
-      const quickFixContext = quickFixContextByDiagnosticKey.get(diagnosticContextKey(document.uri.fsPath, diagnostic));
-      if (!quickFixContext) {
-        continue;
-      }
-
-      if (quickFixContext.evidence?.path) {
-        const openEvidenceAction = new vscode.CodeAction("Ghost Test Catcher: Open Evidence File", vscode.CodeActionKind.QuickFix);
-        openEvidenceAction.command = {
-          title: "Open Evidence File",
-          command: "ghostTestCatcher.openEvidence",
-          arguments: [quickFixContext.testFile, quickFixContext.evidence],
-        };
-        openEvidenceAction.diagnostics = [diagnostic];
-        actions.push(openEvidenceAction);
-      }
-
-      if (quickFixContext.missingSymbols?.length) {
-        const copySymbolsAction = new vscode.CodeAction("Ghost Test Catcher: Copy Missing Symbols", vscode.CodeActionKind.QuickFix);
-        copySymbolsAction.command = {
-          title: "Copy Missing Symbols",
-          command: "ghostTestCatcher.copyMissingSymbols",
-          arguments: [quickFixContext.missingSymbols],
-        };
-        copySymbolsAction.diagnostics = [diagnostic];
-        actions.push(copySymbolsAction);
-      }
-
-      const staticAction = new vscode.CodeAction("Ghost Test Catcher: Run Static Analysis Only", vscode.CodeActionKind.QuickFix);
-      staticAction.command = {
-        title: "Run Static Analysis Only",
-        command: "ghostTestCatcher.runStaticAnalysisForFile",
-        arguments: [quickFixContext.testFile],
-      };
-      staticAction.diagnostics = [diagnostic];
-      actions.push(staticAction);
-    }
-    return actions;
-  }
-}
-
-function findTestFunctions(text) {
-  const locations = new Map();
-  for (const item of core.parseTestFunctionLocations(text)) {
-    const range = new vscode.Range(item.line, item.start, item.line, item.end);
-    locations.set(item.name, range);
-    if (item.qualifiedName) {
-      locations.set(item.qualifiedName, range);
-    }
-  }
-  return locations;
-}
-
-function diagnosticSeverity(groundedStatus, executionStatus) {
-  if (groundedStatus === "unsupported" || executionStatus === "error") {
-    return vscode.DiagnosticSeverity.Error;
-  }
-  if (groundedStatus === "borderline" || executionStatus === "failed" || executionStatus === "skipped") {
-    return vscode.DiagnosticSeverity.Warning;
-  }
-  return vscode.DiagnosticSeverity.Information;
-}
-
-function diagnosticContextKey(testFile, diagnostic) {
-  const range = diagnostic.range;
-  return [
-    core.normalizePath(testFile),
-    range.start.line,
-    range.start.character,
-    range.end.line,
-    range.end.character,
-    diagnostic.message,
-  ].join("|");
-}
-
-function clearQuickFixContextsForFile(testFile) {
-  const prefix = `${core.normalizePath(testFile)}|`;
-  for (const key of Array.from(quickFixContextByDiagnosticKey.keys())) {
-    if (key.startsWith(prefix)) {
-      quickFixContextByDiagnosticKey.delete(key);
-    }
-  }
+  reportPanels?.openLastReport(lastReports, explicitResult);
 }
 
 function gitChangedFiles(root) {

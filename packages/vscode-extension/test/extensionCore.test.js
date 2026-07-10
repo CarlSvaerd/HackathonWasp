@@ -186,6 +186,10 @@ test("isTestPath recognizes Python test naming and tests directories", () => {
   assert.equal(core.isTestPath("/repo/src/auth.py"), false);
 });
 
+test("normalizePath returns lowercase POSIX-style paths for stable cache keys", () => {
+  assert.equal(core.normalizePath("C:\\Repo\\Tests\\test_api.py"), "c:/repo/tests/test_api.py");
+});
+
 test("findProjectRootForFile prefers a nested Python project over the open workspace", () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "ghost-workspace-"));
   const project = path.join(workspace, "HackathonWasp");

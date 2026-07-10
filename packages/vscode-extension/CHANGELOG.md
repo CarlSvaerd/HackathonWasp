@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.5
+
+- Split diagnostics, CodeLens, Quick Fix, report webview, Doctor webview, and native Testing panel logic out of the main extension host file.
+- Added focused unit coverage for extracted diagnostic severity/context helpers and Testing panel item grouping/lookup helpers.
+- Tightened VS Code Testing discovery excludes so generated `.pnpm-store` folders are skipped during workspace scans.
+- Updated the VSIX output filename to `ghost-test-catcher-0.2.5.vsix`.
+
 ## 0.2.4
 
 - Split process execution, cancellation, path, nonce, and environment helpers out of the main extension host file into `extensionUtils.js`.
