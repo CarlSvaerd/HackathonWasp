@@ -162,6 +162,8 @@ npm run test:integration
 npm run package
 ```
 
+`npm run check` runs JavaScript syntax checks plus the static extension audit for command activation parity, Workspace Trust restrictions, webview/process safety, module size budgets, module test coverage, and VSIX version references.
+
 `npm run test:integration` uses `@vscode/test-electron` to download or reuse VS Code, open the fixture workspace in an Extension Development Host, run Doctor, analyze a Python test file, verify diagnostics, and refresh the Testing panel. Set `GHOST_TEST_CATCHER_TEST_PYTHON` when the desired Python executable is not simply `python`.
 
-The package command creates `ghost-test-catcher-0.2.6.vsix`, which can be installed in VS Code with `Extensions: Install from VSIX...`.
+The package command creates `ghost-test-catcher-0.2.7.vsix`, which can be installed in VS Code with `Extensions: Install from VSIX...`.

@@ -109,7 +109,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ghost-test-catcher-vsix
-          path: packages/vscode-extension/ghost-test-catcher-0.2.6.vsix
+          path: packages/vscode-extension/ghost-test-catcher-0.2.7.vsix
 
   vscode-extension-integration:
     name: VS Code integration (${{ matrix.os }})

@@ -56,12 +56,14 @@ npm run test:integration
 npm run package
 ```
 
+`npm run check` combines JavaScript syntax validation with `tools/vscode_extension_static_audit.js`, which catches command activation drift, unsafe process/webview patterns, Workspace Trust regressions, module size-budget drift, missing module tests, and stale VSIX version references.
+
 For local CI parity, run `npm run test:integration:ci`. The wrapper uses `xvfb-run -a` on Linux because VS Code needs a display server in headless runners, captures the integration log, and emits a concise GitHub annotation on failure. The GitHub Actions matrix in `.github/workflows/test.yml` covers `ubuntu-latest`, `windows-latest`, and `macos-15-intel`.
 
 ## VSIX Installation Smoke Test
 
 ```bash
-code --install-extension packages/vscode-extension/ghost-test-catcher-0.2.6.vsix --force
+code --install-extension packages/vscode-extension/ghost-test-catcher-0.2.7.vsix --force
 ```
 
 After installation, open a Python repository, open a test file, and run `Ghost Test Catcher: Setup` from the command palette. The setup flow should find the intended Python executable, write workspace settings for the selected execution profile, detect whether `ghost_test_catcher.cli` imports, and open Doctor. The Doctor report should show the resolved project root, configured Python path, successful `ghost_test_catcher.cli` import, source paths, and discovered tests. Then run `Ghost Test Catcher: Analyze Current Test File`. Also select a test file plus a source file in Explorer and run `Ghost Test Catcher: Analyze Selected Files or Folders`. The extension should show diagnostics on risky tests, CodeLens verdicts above tests, and a report panel through `Ghost Test Catcher: Open Last Report`.
@@ -108,7 +110,7 @@ Use `--fail-on ghost_risk` for the first rollout. It blocks only the highest-ris
 
 1. Run the local verification commands.
 2. Confirm `python tools/repo_hygiene_audit.py` passes before packaging or publishing.
-3. Confirm `packages/vscode-extension/ghost-test-catcher-0.2.6.vsix` was rebuilt.
+3. Confirm `packages/vscode-extension/ghost-test-catcher-0.2.7.vsix` was rebuilt.
 4. Install the VSIX locally and run the extension against at least one grounded test and one intentionally ghost-risk test.
 5. Push the branch and confirm GitHub Actions produces Python, calibration, CI gate, and extension packaging results.
 6. Publish the VSIX manually from the Marketplace publisher management page or with `vsce publish` after publisher authentication is configured.

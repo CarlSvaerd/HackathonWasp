@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.7
+
+- Added a dependency-free VS Code extension static audit to guard package script coverage, command activation parity, Workspace Trust restrictions, webview safety, process-spawn safety, module size budgets, and VSIX version references.
+- Wired the static audit into `npm run check` so CI catches maintainability and security regressions before packaging.
+- Added unit coverage for the static audit itself.
+- Updated the VSIX output filename to `ghost-test-catcher-0.2.7.vsix`.
+
 ## 0.2.6
 
 - Split setup, Doctor, and analysis-cache persistence/fingerprinting logic out of the main extension host file.
