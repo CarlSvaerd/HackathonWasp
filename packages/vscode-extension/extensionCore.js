@@ -124,6 +124,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ghost-test-catcher-report
+          retention-days: 14
           path: |
             ghost-test-catcher-report.json
             ghost-test-catcher-summary.md

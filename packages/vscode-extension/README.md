@@ -148,7 +148,7 @@ Use `Ghost Test Catcher: Add GitHub Actions Gate` to write `.github/workflows/gh
 
 ## Privacy, Cost, And Limits
 
-The default VS Code review workflow for existing tests uses local parsing, local source-symbol checks, local similarity scoring, and optional local or Docker-backed pytest execution. It reports `0 LLM calls` because it does not send existing-test review content to an LLM provider. The optional generate-and-check path outside the normal VS Code review flow can use an LLM because it generates tests before checking them.
+The default VS Code review workflow for existing tests uses local parsing, local source-symbol checks, local similarity scoring, and optional local or Docker-backed pytest execution. It reports `0 LLM calls` because it does not send existing-test review content to an LLM provider. The extension does not use a maintainer-funded backend, shared paid API key, telemetry service, or paid SaaS dependency. The optional generate-and-check path outside the normal VS Code review flow can use an LLM because it generates tests before checking them.
 
 Ghost Test Catcher is Python-first in this release. It discovers and analyzes Python test files and does not yet analyze JavaScript or TypeScript tests. When execution is enabled, selected tests still run as code, so keep confirmation prompts and Workspace Trust enabled for untrusted repositories. Docker execution can reduce local risk but requires a prepared image with Python and pytest.
 

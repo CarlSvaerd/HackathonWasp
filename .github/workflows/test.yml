@@ -39,6 +39,9 @@ jobs:
       - name: Run repo hygiene audit
         run: python tools/repo_hygiene_audit.py
 
+      - name: Run zero-cost architecture audit
+        run: python tools/zero_cost_architecture_audit.py
+
       - name: Run tests
         run: pytest --maxfail=1 --disable-warnings -q
 
@@ -73,6 +76,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ghost-test-catcher-report-${{ matrix.python-version }}
+          retention-days: 14
           path: |
             ghost-test-catcher-summary.md
             ghost-test-catcher-report.json
@@ -113,6 +117,9 @@ jobs:
         working-directory: packages/vscode-extension
         run: npm run package
 
+      - name: Audit packaged VSIX cost hygiene
+        run: python tools/zero_cost_architecture_audit.py --require-vsix
+
       - name: Validate packaged VSIX in clean VS Code profile
         working-directory: packages/vscode-extension
         run: xvfb-run -a npm run test:integration:packaged
@@ -121,6 +128,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ghost-test-catcher-vsix
+          retention-days: 14
           path: packages/vscode-extension/ghost-test-catcher-0.2.8.vsix
 
   vscode-extension-integration:

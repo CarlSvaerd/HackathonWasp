@@ -607,4 +607,5 @@ test("renderGitHubActionsWorkflow creates a deployable CI gate", () => {
   assert.ok(workflow.includes("--tests tests"));
   assert.ok(workflow.includes("--fail-on needs_review"));
   assert.ok(workflow.includes("actions/upload-artifact@v4"));
+  assert.ok(workflow.includes("retention-days: 14"));
 });

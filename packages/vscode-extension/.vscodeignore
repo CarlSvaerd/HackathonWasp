@@ -11,3 +11,5 @@ tsconfig.json
 *.vsix
 *.map
 *.log
+**/__pycache__/**
+**/*.pyc

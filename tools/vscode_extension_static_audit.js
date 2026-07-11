@@ -308,6 +308,8 @@ function checkVscodeIgnore(extensionDir, failures) {
     "test/**",
     "tsconfig.json",
     "*.vsix",
+    "**/__pycache__/**",
+    "**/*.pyc",
   ]) {
     if (!text.includes(pattern)) {
       failures.push(`.vscodeignore must exclude ${pattern}`);

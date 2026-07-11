@@ -27,11 +27,14 @@ This runbook turns the repository into a repeatable product release flow for the
 - Quick Fixes open evidence files, copy missing symbols, and rerun static-only analysis from diagnostics.
 - `Ghost Test Catcher: Add GitHub Actions Gate` writes `.github/workflows/ghost-test-catcher.yml`.
 - Docker execution works with the included `docker/ghost-test-catcher-runner/Dockerfile` image.
+- The zero-cost architecture policy in `docs/zero-cost-architecture.md` remains true: no maintainer-funded LLM usage, paid backend dependency, paid telemetry dependency, shared paid API credentials, automatic paid-service fallback, or per-user infrastructure cost is introduced.
+- `tools/zero_cost_architecture_audit.py` passes against source, and release validation passes with `--require-vsix --require-python-artifacts` after artifacts are built.
 
 ## Local Verification Commands
 
 ```bash
 python tools/repo_hygiene_audit.py
+python tools/zero_cost_architecture_audit.py
 python -m pytest
 python -m ghost_test_catcher.cli calibrate --format pretty
 python -m ghost_test_catcher.cli doctor --repo .
@@ -58,6 +61,9 @@ npm run check
 npm run test:unit
 npm run test:integration
 npm run package
+cd ../..
+python tools/zero_cost_architecture_audit.py --require-vsix --require-python-artifacts
+cd packages/vscode-extension
 npm run test:integration:packaged
 ```
 
@@ -121,9 +127,10 @@ Use `--fail-on ghost_risk` for the first rollout. It blocks only the highest-ris
 ## Release Sequence
 
 1. Run the local verification commands.
-2. Confirm `python tools/repo_hygiene_audit.py` passes before packaging or publishing.
+2. Confirm `python tools/repo_hygiene_audit.py` and `python tools/zero_cost_architecture_audit.py` pass before packaging or publishing.
 3. Confirm `packages/vscode-extension/ghost-test-catcher-0.2.8.vsix` was rebuilt.
-4. Run `npm run test:integration:packaged` from `packages/vscode-extension` to validate the rebuilt VSIX in a clean VS Code profile.
-5. Install the VSIX locally and run the extension against at least one grounded test and one intentionally ghost-risk test.
-6. Push the branch and confirm GitHub Actions produces Python, calibration, CI gate, extension packaging, packaged-VSIX validation, and extension-host integration results.
-7. Publish the VSIX manually from the Marketplace publisher management page or with `vsce publish` after publisher authentication is configured.
+4. Run `python tools/zero_cost_architecture_audit.py --require-vsix --require-python-artifacts` from the repository root to inspect the VSIX, wheel, and sdist for secrets and cost-risk regressions.
+5. Run `npm run test:integration:packaged` from `packages/vscode-extension` to validate the rebuilt VSIX in a clean VS Code profile.
+6. Install the VSIX locally and run the extension against at least one grounded test and one intentionally ghost-risk test.
+7. Push the branch and confirm GitHub Actions produces Python, calibration, CI gate, zero-cost architecture audit, extension packaging, packaged-VSIX validation, and extension-host integration results.
+8. Publish the VSIX manually from the Marketplace publisher management page or with `vsce publish` after publisher authentication is configured.

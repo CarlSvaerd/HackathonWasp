@@ -27,6 +27,12 @@ Run the hygiene audit before committing product-facing changes:
 python tools/repo_hygiene_audit.py
 ```
 
+Run the zero-cost architecture audit before changes that touch extension runtime behavior, CLI execution, CI, package metadata, release artifacts, telemetry, or optional AI/provider code:
+
+```bash
+python tools/zero_cost_architecture_audit.py
+```
+
 Run the Python test suite:
 
 ```bash
@@ -69,12 +75,14 @@ The hygiene audit fails if these show up as tracked files.
 - Keep product copy direct and decision-oriented. Users should understand whether a test is safe to keep, needs review, or is high-risk.
 - Prefer small, deterministic tests. Avoid tests that require network calls unless they are explicitly opt-in.
 - Keep execution safety visible. Changes that run code should preserve workspace trust checks, confirmation prompts, timeouts, and clear output-channel logs.
+- Preserve the zero maintainer-cost architecture. Do not add maintainer-funded LLM calls, shared paid API credentials, telemetry services, hosted backends, automatic paid fallbacks, or usage-based SaaS dependencies without an explicit architecture decision.
 - Do not add speculative abstractions unless they have a current caller, test, and user-facing reason to exist.
 - Keep generated artifacts out of source control. Release artifacts belong in GitHub Releases, package registries, or the VS Code Marketplace, not normal commits.
 
 ## Pull Request Checklist
 
 - [ ] `python tools/repo_hygiene_audit.py` passes.
+- [ ] `python tools/zero_cost_architecture_audit.py` passes, and release builds with artifacts also pass `python tools/zero_cost_architecture_audit.py --require-vsix --require-python-artifacts`.
 - [ ] `python -m pytest` passes.
 - [ ] `npm run check`, including syntax, type, and static extension gates, passes in `packages/vscode-extension`.
 - [ ] `npm test` passes in `packages/vscode-extension`.
