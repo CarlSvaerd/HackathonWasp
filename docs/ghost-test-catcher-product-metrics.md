@@ -1,7 +1,7 @@
 # Ghost Test Catcher Product Metrics
 
-Generated: `2026-07-10T04:29:13+02:00`
-Commit: `59f0577`
+Generated: `2026-07-11T13:22:35+02:00`
+Commit: `6371fb8`
 
 ## Positioning
 
@@ -35,11 +35,11 @@ Ghost Test Catcher is best positioned as a trust layer for AI-assisted developme
 | Existing-test review estimated LLM input tokens | 0 |
 | Existing-test review estimated LLM output tokens | 0 |
 | Built-in calibration pass rate | 7/7 (100.0%) |
-| Built-in calibration runtime | 1.802s |
+| Built-in calibration runtime | 2.435s |
 | Demo tests reviewed | 7 |
 | Demo source files reviewed | 2 |
 | Demo test files reviewed | 2 |
-| Demo runtime | 0.259s |
+| Demo runtime | 0.473s |
 | Demo verdict | `reliable` |
 | Demo reliability score | 85.4% |
 | Demo ETV | 100.0% |
@@ -70,8 +70,8 @@ Estimated reduction from the policy change:
 ## Marketing-Safe Claims
 
 - Existing-test review in the VS Code extension, CLI analyze command, and CI gate uses 0 LLM calls and 0 estimated LLM tokens.
-- The built-in calibration suite matched expected verdicts on 7/7 scenarios in 1.802 seconds.
-- The demo project analysis reviewed 7 Python tests across 2 test files and 2 source files in 0.259 seconds with verdict 'reliable'.
+- The built-in calibration suite matched expected verdicts on 7/7 scenarios in 2.435 seconds.
+- The demo project analysis reviewed 7 Python tests across 2 test files and 2 source files in 0.473 seconds with verdict 'reliable'.
 - For the optional 4-file generate-and-check sample, the attribution policy reduces estimated LLM calls from 16 to 6 (62.5% fewer calls).
 - For that same optional generation sample, estimated input tokens drop from 17881 to 8198 (54.2% fewer estimated input tokens).
 
