@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.8
+
+- Added `Ghost Test Catcher: Analyze Demo Ghost Test`, a self-contained first-run report that shows one source-backed passing test and one high-risk ghost test without modifying the user's project.
+- Added a report-panel explanation for `Reliable`, `Needs review`, `Ghost risk`, ETV, and source evidence so first-time users can understand verdicts without reading the README first.
+- Added checked-JavaScript TypeScript/JSDoc validation through `npm run check:types`, wired it into `npm run check`, and documented the syntax/type/static quality gates.
+- Added static-audit coverage for the checked-JS gate, extension module budgets, package hygiene, and command activation drift.
+- Added unit and integration coverage for the demo command, report education copy, and release-facing manifest behavior.
+- Refreshed product metrics around the current zero-LLM existing-test review path and kept Marketplace claims tied to repository-local measurements.
+- Updated the VSIX output filename to `ghost-test-catcher-0.2.8.vsix`.
+
 ## 0.2.7
 
 - Added a dependency-free VS Code extension static audit to guard package script coverage, command activation parity, Workspace Trust restrictions, webview safety, process-spawn safety, module size budgets, and VSIX version references.

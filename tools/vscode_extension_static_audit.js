@@ -15,6 +15,7 @@ const MODULE_SIZE_BUDGETS = new Map([
   ["extension.js", 30000],
   ["extensionCache.js", 12000],
   ["extensionCore.js", 55000],
+  ["extensionDemo.js", 12000],
   ["extensionDiagnostics.js", 14000],
   ["extensionReports.js", 6000],
   ["extensionSetup.js", 24000],
@@ -25,6 +26,7 @@ const MODULE_SIZE_BUDGETS = new Map([
 const REQUIRED_TEST_MODULES = [
   "extensionCache",
   "extensionCore",
+  "extensionDemo",
   "extensionDiagnostics",
   "extensionSetup",
   "extensionTesting",
@@ -33,6 +35,7 @@ const REQUIRED_TEST_MODULES = [
 
 const TYPECHECKED_MODULES = [
   "extensionCache.js",
+  "extensionDemo.js",
   "extensionUtils.js",
 ];
 

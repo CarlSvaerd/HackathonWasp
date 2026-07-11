@@ -11,6 +11,7 @@ This runbook turns the repository into a repeatable product release flow for the
 - The VS Code extension passes syntax checks and unit tests.
 - The VS Code extension-host integration smoke suite passes through `@vscode/test-electron` on Windows, macOS, and Linux CI.
 - The VS Code extension packages into a `.vsix` that includes the icon, changelog, README, manifest, and extension code.
+- `Ghost Test Catcher: Analyze Demo Ghost Test` opens a self-contained report with one grounded test and one high-risk ghost test without writing project files or calling an LLM.
 - `Ghost Test Catcher: Setup` detects Python, validates `ghost_test_catcher.cli`, applies a local/static/Docker execution profile, verifies Docker when selected, and opens Doctor.
 - The VS Code extension can cancel analysis and Doctor runs without leaving a stuck progress notification.
 - The VS Code extension blocks test execution in untrusted workspaces when `ghostTestCatcher.requireWorkspaceTrustForExecution` is enabled, restricts executable settings, and offers static analysis instead.
@@ -19,6 +20,7 @@ This runbook turns the repository into a repeatable product release flow for the
 - `ghostTestCatcher.persistAnalysisCache=false` keeps analysis cache entries in memory for the current VS Code session while clearing persisted report content from VS Code workspace state.
 - Large-workspace test discovery shows a visible warning when `ghostTestCatcher.testDiscoveryLimit` is reached and offers actions to open or increase the setting.
 - The report panel filters by verdict, framework, missing symbols, failed/risky tests, and evidence text.
+- The report panel explains `Reliable`, `Needs review`, `Ghost risk`, ETV, and source evidence in the panel itself.
 - `Ghost Test Catcher: Copy Report Summary` copies a decision-first Markdown summary containing keep/review/risk counts, verdict counts, cost/cache details, per-file results, true ETV, per-test grounding, symbol signals, evidence locations, execution status, and action guidance.
 - Quick Fixes open evidence files, copy missing symbols, and rerun static-only analysis from diagnostics.
 - `Ghost Test Catcher: Add GitHub Actions Gate` writes `.github/workflows/ghost-test-catcher.yml`.
@@ -56,17 +58,19 @@ npm run test:integration
 npm run package
 ```
 
-`npm run check` combines JavaScript syntax validation with `tools/vscode_extension_static_audit.js`, which catches command activation drift, unsafe process/webview patterns, Workspace Trust regressions, module size-budget drift, missing module tests, and stale VSIX version references.
+`npm run check` combines JavaScript syntax validation, the checked-JavaScript TypeScript/JSDoc gate, and `tools/vscode_extension_static_audit.js`, which catches command activation drift, unsafe process/webview patterns, Workspace Trust regressions, module size-budget drift, missing module tests, checked-JS drift, package hygiene regressions, and stale VSIX version references.
 
 For local CI parity, run `npm run test:integration:ci`. The wrapper uses `xvfb-run -a` on Linux because VS Code needs a display server in headless runners, captures the integration log, and emits a concise GitHub annotation on failure. The GitHub Actions matrix in `.github/workflows/test.yml` covers `ubuntu-latest`, `windows-latest`, and `macos-15-intel`.
 
 ## VSIX Installation Smoke Test
 
 ```bash
-code --install-extension packages/vscode-extension/ghost-test-catcher-0.2.7.vsix --force
+code --install-extension packages/vscode-extension/ghost-test-catcher-0.2.8.vsix --force
 ```
 
-After installation, open a Python repository, open a test file, and run `Ghost Test Catcher: Setup` from the command palette. The setup flow should find the intended Python executable, write workspace settings for the selected execution profile, detect whether `ghost_test_catcher.cli` imports, and open Doctor. The Doctor report should show the resolved project root, configured Python path, successful `ghost_test_catcher.cli` import, source paths, and discovered tests. Then run `Ghost Test Catcher: Analyze Current Test File`. Also select a test file plus a source file in Explorer and run `Ghost Test Catcher: Analyze Selected Files or Folders`. The extension should show diagnostics on risky tests, CodeLens verdicts above tests, and a report panel through `Ghost Test Catcher: Open Last Report`.
+After installation, run `Ghost Test Catcher: Analyze Demo Ghost Test` from the command palette. Confirm it opens a report with one safe-to-keep test, one high-risk ghost test, `0 LLM calls`, a visible `What does this verdict mean?` explanation, ETV/source-evidence wording, and demo copy that says no project files were modified.
+
+Then open a Python repository, open a test file, and run `Ghost Test Catcher: Setup` from the command palette. The setup flow should find the intended Python executable, write workspace settings for the selected execution profile, detect whether `ghost_test_catcher.cli` imports, and open Doctor. The Doctor report should show the resolved project root, configured Python path, successful `ghost_test_catcher.cli` import, source paths, and discovered tests. Then run `Ghost Test Catcher: Analyze Current Test File`. Also select a test file plus a source file in Explorer and run `Ghost Test Catcher: Analyze Selected Files or Folders`. The extension should show diagnostics on risky tests, CodeLens verdicts above tests, and a report panel through `Ghost Test Catcher: Open Last Report`.
 
 Open the VS Code Testing view and run `Ghost Test Catcher: Refresh Testing Panel`. The tree should show Python test files with child items for pytest-style functions and `unittest.TestCase` methods. Run the `Analyze with Ghost Test Catcher` profile from the Testing panel. Grounded executed tests should appear passed, unsupported or borderline tests should appear failed with a Ghost Test Catcher message, and grounded tests should appear skipped when execution is disabled.
 
@@ -97,10 +101,10 @@ The package is prepared for Marketplace packaging with:
 - `galleryBanner`
 - a PNG icon at `media/icon.png`
 - Marketplace README screenshots in `media/screenshot-report.png`, `media/screenshot-diagnostics.png`, and `media/screenshot-testing.png`
-- VS Code walkthrough Markdown in `media/walkthrough-setup.md`, `media/walkthrough-review.md`, and `media/walkthrough-ci.md`
+- VS Code walkthrough Markdown in `media/walkthrough-demo.md`, `media/walkthrough-setup.md`, `media/walkthrough-review.md`, and `media/walkthrough-ci.md`
 - a changelog at `CHANGELOG.md`
 
-The VS Code publishing documentation states that extension icons may not be SVG when publishing. Keep `media/icon.png` as the published icon and regenerate it with `python tools/generate_vscode_extension_icon.py` when the design changes. Regenerate Marketplace screenshots with `python tools/generate_vscode_marketplace_assets.py` when the report, diagnostics, or Testing panel story changes.
+The VS Code publishing documentation states that extension icons may not be SVG when publishing. Keep `media/icon.png` as the published icon and regenerate it with `python tools/generate_vscode_extension_icon.py` when the design changes. Regenerate Marketplace screenshots with `python tools/generate_vscode_marketplace_assets.py` when the report, diagnostics, or Testing panel story changes. This release uses real PNG screenshots already checked into `packages/vscode-extension/media`. No GIF is packaged; if a GIF is added later, capture a real flow of `Ghost Test Catcher: Analyze Demo Ghost Test` followed by `Ghost Test Catcher: Analyze Current Test File` and place it at `packages/vscode-extension/media/demo-flow.gif`, then reference it from the extension README.
 
 ## CI Gate Policy
 
@@ -110,7 +114,7 @@ Use `--fail-on ghost_risk` for the first rollout. It blocks only the highest-ris
 
 1. Run the local verification commands.
 2. Confirm `python tools/repo_hygiene_audit.py` passes before packaging or publishing.
-3. Confirm `packages/vscode-extension/ghost-test-catcher-0.2.7.vsix` was rebuilt.
+3. Confirm `packages/vscode-extension/ghost-test-catcher-0.2.8.vsix` was rebuilt.
 4. Install the VSIX locally and run the extension against at least one grounded test and one intentionally ghost-risk test.
 5. Push the branch and confirm GitHub Actions produces Python, calibration, CI gate, and extension packaging results.
 6. Publish the VSIX manually from the Marketplace publisher management page or with `vsce publish` after publisher authentication is configured.

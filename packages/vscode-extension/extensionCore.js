@@ -895,6 +895,14 @@ function renderReportHtml(reports, options = {}) {
     body { margin: 0; padding: 24px; color: #d4d4d4; background: #1e1e1e; font-family: var(--vscode-font-family); }
     h1, h2, h3 { color: #f3f3f3; margin: 0; }
     .notice { margin-top: 14px; padding: 12px 14px; border: 1px solid #3c3c3c; border-radius: 6px; background: #252526; color: #d4d4d4; }
+    .explain { margin-top: 10px; padding: 12px 14px; border: 1px solid #3c3c3c; border-radius: 6px; background: #202020; color: #d4d4d4; }
+    .explain summary { color: #f3f3f3; font-weight: 600; }
+    .explain-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+    .explain-item { border-left: 3px solid #6796e6; padding-left: 10px; color: #cfcfcf; }
+    .explain-item strong { display: block; color: #f3f3f3; margin-bottom: 3px; }
+    .explain-item.ghost { border-left-color: #e06c75; }
+    .explain-item.review { border-left-color: #d7a642; }
+    .explain-item.safe { border-left-color: #4ec97a; }
     .toolbar { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 10px; margin: 16px 0 18px; padding: 12px; background: #252526; border: 1px solid #3c3c3c; border-radius: 6px; }
     .toolbar label { display: grid; gap: 5px; color: #bdbdbd; font-size: 12px; }
     .toolbar select, .toolbar input { background: #1e1e1e; color: #f3f3f3; border: 1px solid #3c3c3c; border-radius: 4px; padding: 7px; font-family: var(--vscode-font-family); min-width: 0; }
@@ -924,19 +932,42 @@ function renderReportHtml(reports, options = {}) {
     .hidden { display: none; }
     .empty-state { border: 1px solid #3c3c3c; border-radius: 6px; padding: 16px; color: #bdbdbd; background: #252526; }
     @media (max-width: 980px) { .toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-    @media (max-width: 820px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 820px) { .grid, .explain-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 620px) { .toolbar { grid-template-columns: 1fr; } }
+    @media (max-width: 620px) { .explain-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <h1>Ghost Test Catcher</h1>
   <div class="notice">Cost and cache: ${escapeHtml(costSummaryText(reports))}. Existing-test review uses local analysis and does not call an LLM.</div>
+  ${renderDemoNotice(reports)}
+  ${renderVerdictExplanation()}
   ${renderReportToolbar(frameworks)}
   <div id="ghost-empty" class="empty-state hidden">No tests match the current filters.</div>
   ${body}
   ${nonce ? renderReportScript(nonce) : ""}
 </body>
 </html>`;
+}
+
+function renderDemoNotice(reports) {
+  const hasDemoReport = (reports || []).some((result) => result?.__demo);
+  if (!hasDemoReport) {
+    return "";
+  }
+  return `<div class="notice">Demo mode: this self-contained report shows one grounded test and one ghost-risk test. It does not read, write, or modify your project files.</div>`;
+}
+
+function renderVerdictExplanation() {
+  return `<details class="explain" open>
+    <summary>What does this verdict mean?</summary>
+    <div class="explain-grid">
+      <div class="explain-item safe"><strong>Reliable</strong>A test is source-backed and passed execution, with no missing project symbols detected.</div>
+      <div class="explain-item review"><strong>Needs review</strong>Some evidence exists, but grounding is partial, execution was skipped or failed, or missing symbols may be fixtures/mocks/context gaps.</div>
+      <div class="explain-item ghost"><strong>Ghost risk</strong>The test likely references APIs, workflows, or behavior not found in the selected source evidence. Rewrite before trusting it.</div>
+      <div class="explain-item"><strong>ETV and source evidence</strong>ETV estimates how much of the test set is worth keeping or repairing. Source evidence points to the files, lines, and symbols supporting each test.</div>
+    </div>
+  </details>`;
 }
 
 function renderDoctorHtml(report) {

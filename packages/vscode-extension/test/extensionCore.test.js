@@ -419,12 +419,14 @@ test("package manifest declares limited workspace trust and guarded execution", 
     true
   );
   assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.setup"));
+  assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.analyzeDemoGhostTest"));
   assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.openSetupGuide"));
   assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.refreshTestExplorer"));
   assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.clearAnalysisCache"));
   assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.copyReportSummary"));
   assert.ok(manifest.activationEvents.includes("onCommand:ghostTestCatcher.addGitHubActionsGate"));
   assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.setup"));
+  assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.analyzeDemoGhostTest"));
   assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.openSetupGuide"));
   assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.refreshTestExplorer"));
   assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.copyReportSummary"));
@@ -460,6 +462,11 @@ test("package manifest declares limited workspace trust and guarded execution", 
     true
   );
   assert.ok(manifest.contributes.walkthroughs.some((walkthrough) => walkthrough.id === "ghostTestCatcher.gettingStarted"));
+  assert.ok(
+    manifest.contributes.walkthroughs
+      .flatMap((walkthrough) => walkthrough.steps || [])
+      .some((step) => step.id === "ghostTestCatcher.demo")
+  );
 });
 
 test("renderDoctorHtml escapes setup details and includes inferred source files", () => {
@@ -529,6 +536,9 @@ test("renderReportHtml escapes user-controlled text and includes exact evidence 
 
   assert.ok(html.includes("Ghost Test Catcher"));
   assert.ok(html.includes("Cost and cache: 0 LLM calls"));
+  assert.ok(html.includes("What does this verdict mean?"));
+  assert.ok(html.includes("ETV estimates how much of the test set is worth keeping or repairing"));
+  assert.ok(html.includes("Source evidence points to the files, lines, and symbols"));
   assert.ok(html.includes("LLM Calls"));
   assert.ok(html.includes("Est. Input Tokens"));
   assert.ok(html.includes("Content-Security-Policy"));

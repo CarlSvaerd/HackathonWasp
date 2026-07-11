@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const core = require("./extensionCore");
 const cacheModule = require("./extensionCache");
+const demoModule = require("./extensionDemo");
 const diagnosticsModule = require("./extensionDiagnostics");
 const reportsModule = require("./extensionReports");
 const setupModule = require("./extensionSetup");
@@ -52,6 +53,7 @@ function activate(context) {
   context.subscriptions.push(diagnostics);
   context.subscriptions.push(codeLensChanged);
   context.subscriptions.push(outputChannel);
+  context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.analyzeDemoGhostTest", analyzeDemoGhostTest));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.analyzeCurrentTest", analyzeCurrentTest));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.analyzeChangedTests", analyzeChangedTests));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.analyzeSelectedFiles", analyzeSelectedFiles));
@@ -121,15 +123,29 @@ async function maybeShowSetupNudge(context) {
   await context.workspaceState.update(SETUP_NUDGE_STORAGE_KEY, true);
   const choice = await vscode.window.showInformationMessage(
     "Ghost Test Catcher can verify Python tests against real source evidence before you trust them.",
+    "Try Demo",
     "Set Up",
     "Open Guide",
     "Later"
   );
-  if (choice === "Set Up") {
+  if (choice === "Try Demo") {
+    await vscode.commands.executeCommand("ghostTestCatcher.analyzeDemoGhostTest");
+  } else if (choice === "Set Up") {
     await vscode.commands.executeCommand("ghostTestCatcher.setup");
   } else if (choice === "Open Guide") {
     await openSetupGuide();
   }
+}
+
+async function analyzeDemoGhostTest() {
+  const report = demoModule.buildDemoGhostReport();
+  updateLastReports([report]);
+  openLastReport();
+  logOutput("Opened the self-contained Ghost Test Catcher demo report. No workspace files were modified.");
+  const decisions = core.summarizeTestDecisions([report]);
+  vscode.window.showInformationMessage(
+    `Ghost Test Catcher demo: ${decisions.safe} safe to keep, ${decisions.highRisk} ghost risk. Cost: ${core.costSummaryText([report])}. No project files were modified.`
+  );
 }
 
 async function workspaceHasPythonTests() {

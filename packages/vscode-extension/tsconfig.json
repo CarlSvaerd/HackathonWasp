@@ -20,6 +20,7 @@
   },
   "include": [
     "extensionCache.js",
+    "extensionDemo.js",
     "extensionUtils.js",
     "test/typecheck/**/*.js"
   ],

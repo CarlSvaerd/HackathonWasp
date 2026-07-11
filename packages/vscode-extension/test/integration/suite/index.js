@@ -5,6 +5,7 @@ const vscode = require("vscode");
 const EXTENSION_ID = "carl-svaerd.ghost-test-catcher";
 const COMMANDS = [
   "ghostTestCatcher.setup",
+  "ghostTestCatcher.analyzeDemoGhostTest",
   "ghostTestCatcher.openSetupGuide",
   "ghostTestCatcher.runDoctor",
   "ghostTestCatcher.analyzeCurrentTest",
@@ -20,6 +21,7 @@ async function run() {
   const tests = [
     ["activates and registers product commands", activatesAndRegistersCommands],
     ["runs Doctor against the fixture workspace", runsDoctor],
+    ["opens the self-contained demo report", opensDemoReport],
     ["analyzes the active Python test file and publishes diagnostics", analyzesCurrentTestFile],
     ["refreshes the native Testing panel without throwing", refreshesTestingPanel],
   ];
@@ -52,6 +54,15 @@ async function activatesAndRegistersCommands() {
   for (const command of COMMANDS) {
     assert.ok(commands.includes(command), `expected command ${command} to be registered`);
   }
+}
+
+async function opensDemoReport() {
+  await vscode.commands.executeCommand("ghostTestCatcher.analyzeDemoGhostTest");
+  await vscode.commands.executeCommand("ghostTestCatcher.copyReportSummary");
+  const summary = await vscode.env.clipboard.readText();
+  assert.ok(summary.includes("High-risk ghost tests: 1"), "expected the demo summary to show one ghost-risk test");
+  assert.ok(summary.includes("demo/tests/test_auth_service.py"), "expected the demo summary to use the demo test path");
+  assert.ok(summary.includes("0 LLM calls"), "expected the demo summary to preserve the zero-LLM cost story");
 }
 
 async function runsDoctor() {

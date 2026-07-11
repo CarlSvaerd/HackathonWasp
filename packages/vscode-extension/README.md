@@ -30,23 +30,25 @@ It runs inside VS Code as a review tool for generated or suspicious tests: pick 
 
 ## Quick Start
 
-1. Install the Python package in the Python environment used by your workspace.
+1. Run `Ghost Test Catcher: Analyze Demo Ghost Test` from the command palette to see a self-contained report with one grounded test and one high-risk ghost test. This demo does not modify your project and does not call an LLM.
+2. Install the Python package in the Python environment used by your workspace.
 
    ```bash
    pip install "ghost-test-catcher[ghost]"
    ```
 
-2. Open a Python project in VS Code.
-3. Run `Ghost Test Catcher: Setup`.
-4. Choose local execution, static-only review, or Docker isolation.
-5. Open a Python test file and run `Ghost Test Catcher: Analyze Current Test File`.
-6. Review diagnostics, CodeLens verdicts, the report panel, and Testing panel results.
+3. Open a Python project in VS Code.
+4. Run `Ghost Test Catcher: Setup`.
+5. Choose local execution, static-only review, or Docker isolation.
+6. Open a Python test file and run `Ghost Test Catcher: Analyze Current Test File`.
+7. Review diagnostics, CodeLens verdicts, the report panel, and Testing panel results.
 
 The extension also contributes a VS Code walkthrough and shows a one-time setup prompt in workspaces that contain Python tests.
 
 ## Core Features
 
 - **Guided setup:** detects Python, validates `ghost_test_catcher.cli`, writes workspace settings, and opens Doctor.
+- **Instant demo:** opens a self-contained ghost-test report so new users can understand the verdicts before configuring Python.
 - **Current-file review:** analyze the active Python test file from the command palette, editor title, or context menu.
 - **Changed-test review:** analyze changed Python test files in the current Git workspace.
 - **Selection review:** analyze selected test files or folders with explicitly selected source context.
@@ -66,6 +68,7 @@ The extension also contributes a VS Code walkthrough and shows a one-time setup 
 - **Cancellable execution:** analysis and Doctor runs use VS Code progress cancellation plus process timeouts.
 - **Output channel:** records CLI starts, stderr, and failure details in `Ghost Test Catcher`.
 - **Workspace Trust support:** falls back to static analysis in untrusted workspaces unless execution trust enforcement is disabled.
+- **Telemetry-free:** does not collect usage telemetry in this release.
 
 ## Requirements
 
@@ -88,6 +91,7 @@ For normal users, start with `Ghost Test Catcher: Setup`. Setup checks the confi
 ## Commands
 
 - `Ghost Test Catcher: Setup`
+- `Ghost Test Catcher: Analyze Demo Ghost Test`
 - `Ghost Test Catcher: Analyze Current Test File`
 - `Ghost Test Catcher: Analyze Changed Test Files`
 - `Ghost Test Catcher: Analyze Selected Files or Folders`
@@ -134,9 +138,17 @@ Analysis results are cached per workspace using the project root, test path, sou
 
 The normal VS Code review path analyzes existing tests with local parsing, source evidence checks, similarity scoring, and optional pytest execution. It does not call an LLM. The report panel displays this as `0 LLM calls` and marks whether each result was fresh or served from cache.
 
+Report verdicts are intentionally simple. `Reliable` means the tests are grounded in source evidence and execution is clean when enabled. `Needs review` means some evidence exists but context, symbols, or execution still need human judgment. `Ghost risk` means a test likely references APIs, workflows, or behavior that the selected source evidence does not support. ETV, or Effective Test Value, estimates how much of the test set is worth keeping or repairing after grounding and execution checks. Source evidence points to the files, lines, and symbols behind each decision.
+
 Diagnostics expose Quick Fixes for common review actions: open the best evidence file at the reported line, copy missing symbols to the clipboard, or rerun the selected file with static analysis only. The report panel includes client-side filters and expandable evidence details for larger review sessions. Use `Ghost Test Catcher: Copy Report Summary` after analysis to copy a Markdown summary with decision counts, verdict counts, cost/cache details, per-file results, true ETV, per-test grounding, execution status, symbol signals, evidence locations, and action guidance.
 
 Use `Ghost Test Catcher: Add GitHub Actions Gate` to write `.github/workflows/ghost-test-catcher.yml` for pull-request and main-branch checks. The generated workflow installs the package, runs `ghost-test-catcher ci`, publishes a Markdown summary, and uploads JSON/Markdown artifacts.
+
+## Privacy, Cost, And Limits
+
+The default VS Code review workflow for existing tests uses local parsing, local source-symbol checks, local similarity scoring, and optional local or Docker-backed pytest execution. It reports `0 LLM calls` because it does not send existing-test review content to an LLM provider. The optional generate-and-check path outside the normal VS Code review flow can use an LLM because it generates tests before checking them.
+
+Ghost Test Catcher is Python-first in this release. It discovers and analyzes Python test files and does not yet analyze JavaScript or TypeScript tests. When execution is enabled, selected tests still run as code, so keep confirmation prompts and Workspace Trust enabled for untrusted repositories. Docker execution can reduce local risk but requires a prepared image with Python and pytest.
 
 ## Security Model
 
@@ -167,4 +179,4 @@ npm run package
 
 `npm run test:integration` uses `@vscode/test-electron` to download or reuse VS Code, open the fixture workspace in an Extension Development Host, run Doctor, analyze a Python test file, verify diagnostics, and refresh the Testing panel. Set `GHOST_TEST_CATCHER_TEST_PYTHON` when the desired Python executable is not simply `python`.
 
-The package command creates `ghost-test-catcher-0.2.7.vsix`, which can be installed in VS Code with `Extensions: Install from VSIX...`.
+The package command creates `ghost-test-catcher-0.2.8.vsix`, which can be installed in VS Code with `Extensions: Install from VSIX...`.
