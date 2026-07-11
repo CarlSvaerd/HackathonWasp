@@ -57,7 +57,7 @@ def _read_config_payload(root: Path, config_path: str | Path | None) -> dict[str
     for path in candidates:
         if not path.exists():
             continue
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
+        data = tomllib.loads(path.read_text(encoding="utf-8-sig"))
         if path.name == "pyproject.toml":
             section = data.get("tool", {}).get("ghost-test-catcher", {})
             if isinstance(section, dict):

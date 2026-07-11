@@ -418,10 +418,10 @@ The packaged VS Code extension includes the analyzer sources needed for `ghost_t
 python -m pip install pytest
 ```
 
-For standalone CLI usage or generated CI workflows, install from the public GitHub repository until PyPI publishing is completed:
+For standalone CLI usage or generated CI workflows, install from the public GitHub repository pinned to the `v0.2.8` release tag until PyPI publishing is completed:
 
 ```bash
-python -m pip install "ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@main"
+python -m pip install "ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@v0.2.8"
 ```
 
 When developing this repository, use an editable install instead:

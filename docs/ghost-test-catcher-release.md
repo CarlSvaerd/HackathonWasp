@@ -4,7 +4,7 @@ This runbook turns the repository into a repeatable product release flow for the
 
 ## Release Readiness Criteria
 
-- The Python package installs with the `ghost` extra from the local checkout and from the public GitHub repository install path used before PyPI publishing.
+- The Python package installs with the `ghost` extra from the local checkout and from the public GitHub repository install path pinned to the `v0.2.8` release tag used before PyPI publishing.
 - `ghost-test-catcher analyze` works against existing pytest-style files and `unittest.TestCase` files.
 - `ghost-test-catcher ci` writes both JSON and Markdown reports.
 - `ghost-test-catcher calibrate` passes every built-in calibration case.
@@ -79,7 +79,7 @@ Open the VS Code Testing view and run `Ghost Test Catcher: Refresh Testing Panel
 
 Open the report panel and verify the verdict, framework, missing-symbol, failed/risky, and evidence-text filters hide and show the expected rows. Confirm the table uses `Symbol Signal` and `Action` so grounded passing tests with helper or fixture context gaps do not read like ghost-test failures. Run `Ghost Test Catcher: Copy Report Summary`, paste the clipboard into a scratch Markdown file, and confirm it includes keep/review/risk counts, verdict counts, cost/cache details, workspace-relative file paths, file verdicts, true ETV from the report components, per-test grounding, symbol signals, evidence locations, execution status, and action guidance. A reliable all-passing report must not show `ETV: 0.0%` unless the underlying report component is actually zero.
 
-Run `Ghost Test Catcher: Add GitHub Actions Gate` and confirm `.github/workflows/ghost-test-catcher.yml` contains a GitHub-repository package install command, a `ghost-test-catcher ci` job, summary publishing, and artifact upload. Do not keep the generated workflow in unrelated release commits unless the release intentionally enables CI gating.
+Run `Ghost Test Catcher: Add GitHub Actions Gate` and confirm `.github/workflows/ghost-test-catcher.yml` contains a pinned GitHub-repository package install command, a `ghost-test-catcher ci` job, summary publishing, and artifact upload. Do not keep the generated workflow in unrelated release commits unless the release intentionally enables CI gating.
 
 Reload VS Code after a completed analysis and confirm cached diagnostics and CodeLens reappear. Modify a relevant Python file and confirm the stale diagnostics are cleared until the next analysis. Then set `ghostTestCatcher.persistAnalysisCache` to `false`, run analysis again, reload VS Code, and confirm persisted cached diagnostics are not restored while same-session repeated analysis can still reuse valid in-memory cache entries.
 
@@ -110,7 +110,9 @@ The package is prepared for Marketplace packaging with:
 
 The VS Code publishing documentation states that extension icons may not be SVG when publishing. Keep `media/icon.png` as the published icon and regenerate it with `python tools/generate_vscode_extension_icon.py` when the design changes. Regenerate Marketplace screenshots with `python tools/generate_vscode_marketplace_assets.py` when the report, diagnostics, or Testing panel story changes. This release uses real PNG screenshots already checked into `packages/vscode-extension/media`. No GIF is packaged; if a GIF is added later, capture a real flow of `Ghost Test Catcher: Analyze Demo Ghost Test` followed by `Ghost Test Catcher: Analyze Current Test File` and place it at `packages/vscode-extension/media/demo-flow.gif`, then reference it from the extension README.
 
-The public PyPI project name `ghost-test-catcher` is not published as of the v0.2.8 release-prep validation. The VS Code extension works around that by bundling analyzer sources, and generated CI workflows install from the public GitHub repository. Publishing the Python package to PyPI remains a Marketplace-readiness follow-up for teams that want `pip install "ghost-test-catcher[ghost]"` instead of a GitHub direct-reference install.
+The public PyPI project name `ghost-test-catcher` is not published as of the v0.2.8 release-prep validation. The VS Code extension works around that by bundling analyzer sources, and generated CI workflows install from the public GitHub repository pinned to the immutable `v0.2.8` git tag. Publishing the Python package to PyPI remains a Marketplace-readiness follow-up for teams that want `pip install "ghost-test-catcher[ghost]"` instead of a GitHub direct-reference install.
+
+Before creating a public Python package release, publish the matching wheel and sdist from the exact commit tagged `v0.2.8`. Once PyPI is live, update the generated CI install command from the tagged GitHub direct reference to a versioned PyPI install such as `python -m pip install "ghost-test-catcher[ghost]==0.2.8"`.
 
 ## CI Gate Policy
 

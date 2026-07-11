@@ -116,8 +116,8 @@ async function generatesCiWorkflow() {
   const workflow = fs.readFileSync(workflowPath, "utf-8");
   assert.ok(workflow.includes("ghost-test-catcher ci"), "expected the workflow to run the CLI gate");
   assert.ok(
-    workflow.includes("ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@main"),
-    "expected the generated workflow to use the repository install path while PyPI is unpublished"
+    workflow.includes("ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@v0.2.8"),
+    "expected the generated workflow to use the tagged repository install path while PyPI is unpublished"
   );
 }
 

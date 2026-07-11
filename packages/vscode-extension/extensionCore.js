@@ -5,7 +5,8 @@ const WEBVIEW_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data
 const GHOST_CLI_MODULE = "ghost_test_catcher.cli";
 const GHOST_CLI_COMMAND = "ghost-test-catcher";
 const PYPI_PACKAGE_SPEC = "ghost-test-catcher[ghost]";
-const REPOSITORY_PACKAGE_SPEC = "ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@main";
+const REPOSITORY_PACKAGE_REF = "v0.2.8";
+const REPOSITORY_PACKAGE_SPEC = `ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@${REPOSITORY_PACKAGE_REF}`;
 
 function buildAnalyzeArgs({ root, testFile, sourcePaths, testMode, maxFiles, executeTests, executionBackend, dockerImage }) {
   const relativeTestFile = toPosixPath(path.relative(root, testFile));
@@ -1272,6 +1273,7 @@ function escapeHtml(value) {
 module.exports = {
   GHOST_CLI_COMMAND,
   GHOST_CLI_MODULE,
+  REPOSITORY_PACKAGE_REF,
   REPOSITORY_PACKAGE_SPEC,
   analysisCacheKey,
   buildAnalyzeArgs,

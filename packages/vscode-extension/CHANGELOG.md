@@ -9,7 +9,7 @@
 - Added unit and integration coverage for the demo command, report education copy, and release-facing manifest behavior.
 - Bundled the Python analyzer sources into the VSIX so first-run VS Code analysis can import `ghost_test_catcher.cli` without requiring a published PyPI package.
 - Added a packaged-VSIX integration validation path that installs the built VSIX into a clean VS Code profile and verifies the demo, bundled CLI analysis, failure handling, Testing panel refresh, and CI workflow generation.
-- Updated generated CI workflows to install the CLI from the public GitHub repository while the PyPI package is not yet published.
+- Updated generated CI workflows to install the CLI from the pinned public `v0.2.8` GitHub tag while the PyPI package is not yet published.
 - Improved missing-executable failures so bad Python paths point users back to setup instead of surfacing raw process-spawn errors.
 - Refreshed product metrics around the current zero-LLM existing-test review path and kept Marketplace claims tied to repository-local measurements.
 - Updated the VSIX output filename to `ghost-test-catcher-0.2.8.vsix`.

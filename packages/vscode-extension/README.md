@@ -74,10 +74,10 @@ Install `pytest` in the configured Python environment when you want Ghost Test C
 python -m pip install pytest
 ```
 
-For standalone CLI usage or generated CI workflows, install from the public GitHub repository until the PyPI package is published:
+For standalone CLI usage or generated CI workflows, install from the public GitHub repository pinned to the `v0.2.8` release tag until the PyPI package is published:
 
 ```bash
-python -m pip install "ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@main"
+python -m pip install "ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@v0.2.8"
 ```
 
 During local development from this repository, use an editable install instead:
@@ -144,7 +144,7 @@ Report verdicts are intentionally simple. `Reliable` means the tests are grounde
 
 Diagnostics expose Quick Fixes for common review actions: open the best evidence file at the reported line, copy missing symbols to the clipboard, or rerun the selected file with static analysis only. The report panel includes client-side filters and expandable evidence details for larger review sessions. Use `Ghost Test Catcher: Copy Report Summary` after analysis to copy a Markdown summary with decision counts, verdict counts, cost/cache details, per-file results, true ETV, per-test grounding, execution status, symbol signals, evidence locations, and action guidance.
 
-Use `Ghost Test Catcher: Add GitHub Actions Gate` to write `.github/workflows/ghost-test-catcher.yml` for pull-request and main-branch checks. The generated workflow installs the CLI from the public GitHub repository while PyPI publishing is pending, runs `ghost-test-catcher ci`, publishes a Markdown summary, and uploads JSON/Markdown artifacts.
+Use `Ghost Test Catcher: Add GitHub Actions Gate` to write `.github/workflows/ghost-test-catcher.yml` for pull-request and main-branch checks. The generated workflow installs the CLI from the public GitHub repository pinned to the `v0.2.8` release tag while PyPI publishing is pending, runs `ghost-test-catcher ci`, publishes a Markdown summary, and uploads JSON/Markdown artifacts.
 
 ## Privacy, Cost, And Limits
 

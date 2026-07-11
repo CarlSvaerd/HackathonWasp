@@ -108,8 +108,13 @@ def _resolve_specs(root: Path, specs: Iterable[str]) -> list[Path]:
 
 
 def _iter_python_files(root: Path):
+    root = root.resolve()
     for path in root.rglob("*.py"):
-        if any(part in IGNORED_DIRECTORIES for part in path.parts):
+        try:
+            relative_parts = path.relative_to(root).parts
+        except ValueError:
+            relative_parts = path.parts
+        if any(part in IGNORED_DIRECTORIES for part in relative_parts[:-1]):
             continue
         if path.suffix in PYTHON_EXTENSIONS:
             yield path

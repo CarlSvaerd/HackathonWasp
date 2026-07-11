@@ -1,5 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 
 const utils = require("../extensionUtils");
@@ -28,11 +30,19 @@ test("buildPythonEnv can keep workspace paths out for untrusted workspaces", () 
 });
 
 test("resolveBundledPythonSourcePath finds packaged and development CLI sources", () => {
-  const extensionRoot = path.resolve(__dirname, "..");
-  assert.equal(
-    utils.resolveBundledPythonSourcePath(extensionRoot),
-    path.resolve(extensionRoot, "..", "..", "src")
-  );
+  const packagedRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ghost-packaged-extension-"));
+  const packagedPythonSource = path.join(packagedRoot, "python-src");
+  writeGhostCliSourceTree(packagedPythonSource);
+
+  assert.equal(utils.resolveBundledPythonSourcePath(packagedRoot), packagedPythonSource);
+
+  const developmentRepo = fs.mkdtempSync(path.join(os.tmpdir(), "ghost-development-repo-"));
+  const developmentExtensionRoot = path.join(developmentRepo, "packages", "vscode-extension");
+  const developmentPythonSource = path.join(developmentRepo, "src");
+  fs.mkdirSync(developmentExtensionRoot, { recursive: true });
+  writeGhostCliSourceTree(developmentPythonSource);
+
+  assert.equal(utils.resolveBundledPythonSourcePath(developmentExtensionRoot), developmentPythonSource);
 });
 
 test("shouldSkipDirectory ignores generated dependency and cache folders", () => {
@@ -125,3 +135,10 @@ test("execFile turns missing executables into actionable setup errors", async ()
     }
   );
 });
+
+function writeGhostCliSourceTree(root) {
+  fs.mkdirSync(path.join(root, "ghost_test_catcher"), { recursive: true });
+  fs.mkdirSync(path.join(root, "llmSHAP", "ghost"), { recursive: true });
+  fs.writeFileSync(path.join(root, "ghost_test_catcher", "cli.py"), "def main():\n    return 0\n", "utf-8");
+  fs.writeFileSync(path.join(root, "llmSHAP", "ghost", "cli.py"), "def main():\n    return 0\n", "utf-8");
+}

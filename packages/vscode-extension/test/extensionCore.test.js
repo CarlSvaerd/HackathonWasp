@@ -91,7 +91,7 @@ test("setup helpers produce safe defaults for first-run onboarding", () => {
     "-m",
     "pip",
     "install",
-    "ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@main",
+    "ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@v0.2.8",
   ]);
 });
 
@@ -601,7 +601,7 @@ test("renderGitHubActionsWorkflow creates a deployable CI gate", () => {
   assert.ok(workflow.includes("name: Ghost Test Catcher"));
   assert.ok(workflow.includes("actions/checkout@v4"));
   assert.ok(workflow.includes("python-version: \"3.12\""));
-  assert.ok(workflow.includes("python -m pip install \"ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@main\""));
+  assert.ok(workflow.includes("python -m pip install \"ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@v0.2.8\""));
   assert.ok(workflow.includes("ghost-test-catcher ci"));
   assert.ok(workflow.includes("--source src lib"));
   assert.ok(workflow.includes("--tests tests"));
