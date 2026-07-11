@@ -403,7 +403,7 @@ It provides:
 - a `Ghost Test Catcher` output channel for CLI stderr and failure details
 - limited VS Code Workspace Trust support that offers static analysis instead of test execution in untrusted workspaces
 
-Run `Ghost Test Catcher: Setup` first in a new workspace. Setup detects the configured Python executable, validates the public `ghost_test_catcher.cli` module, offers an install path if the CLI is missing, writes workspace settings for local/static/Docker execution, verifies Docker when selected, and opens Doctor.
+Run `Ghost Test Catcher: Setup` first in a new workspace. Setup detects the configured Python executable, validates `ghost_test_catcher.cli` from the bundled analyzer or configured environment, offers a GitHub-based install path if the CLI is still missing, writes workspace settings for local/static/Docker execution, verifies Docker when selected, and opens Doctor.
 
 For local development, open `packages/vscode-extension` in VS Code and run the extension host.
 The extension shells out to:
@@ -412,10 +412,16 @@ The extension shells out to:
 python -m ghost_test_catcher.cli analyze
 ```
 
-In another project, install the package into the configured Python environment:
+The packaged VS Code extension includes the analyzer sources needed for `ghost_test_catcher.cli`, so normal VS Code review does not require the Python package to be published on PyPI or preinstalled. Install `pytest` in the configured Python environment when you want selected tests to execute instead of static-only review:
 
 ```bash
-pip install "ghost-test-catcher[ghost]"
+python -m pip install pytest
+```
+
+For standalone CLI usage or generated CI workflows, install from the public GitHub repository until PyPI publishing is completed:
+
+```bash
+python -m pip install "ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@main"
 ```
 
 When developing this repository, use an editable install instead:
@@ -424,13 +430,13 @@ When developing this repository, use an editable install instead:
 pip install -e ".[ghost]"
 ```
 
-When running from this repository in a trusted workspace, the extension prepends `<workspace>/src` to `PYTHONPATH`.
+The extension always prepends its packaged analyzer source path to `PYTHONPATH`. When running from a trusted workspace, it also prepends `<workspace>/src` and the workspace root so local project imports resolve.
 
 When execution is enabled, the Python test runner runs against a temporary copy of the selected tests and source files.
 The extension asks for confirmation before executing tests by default.
 If VS Code marks the workspace as untrusted, the extension will not execute tests while `ghostTestCatcher.requireWorkspaceTrustForExecution` is enabled. It offers to run static grounding analysis instead.
 The extension also treats `ghostTestCatcher.pythonPath`, `ghostTestCatcher.executionBackend`, and `ghostTestCatcher.dockerImage` as restricted settings in untrusted workspaces because they control executable behavior.
-In untrusted workspaces, the extension does not prepend the workspace root or `src` directory to `PYTHONPATH`, so the CLI must be installed in the configured Python environment.
+In untrusted workspaces, the extension permits its own packaged analyzer source path but does not prepend the workspace root or `src` directory to `PYTHONPATH`.
 The Testing panel uses the same execution and trust rules as the command palette commands.
 The extension caches valid reports using source/test file fingerprints and invalidates that cache when relevant Python files change.
 

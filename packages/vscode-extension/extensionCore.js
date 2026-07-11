@@ -5,6 +5,7 @@ const WEBVIEW_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data
 const GHOST_CLI_MODULE = "ghost_test_catcher.cli";
 const GHOST_CLI_COMMAND = "ghost-test-catcher";
 const PYPI_PACKAGE_SPEC = "ghost-test-catcher[ghost]";
+const REPOSITORY_PACKAGE_SPEC = "ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@main";
 
 function buildAnalyzeArgs({ root, testFile, sourcePaths, testMode, maxFiles, executeTests, executionBackend, dockerImage }) {
   const relativeTestFile = toPosixPath(path.relative(root, testFile));
@@ -96,7 +97,7 @@ jobs:
           cache: pip
 
       - name: Install Ghost Test Catcher
-        run: python -m pip install "${PYPI_PACKAGE_SPEC}"
+        run: python -m pip install "${REPOSITORY_PACKAGE_SPEC}"
 
       - name: Run Ghost Test Catcher CI gate
         run: |
@@ -234,6 +235,10 @@ function editableInstallArgs() {
 }
 
 function pypiInstallArgs(packageSpec = PYPI_PACKAGE_SPEC) {
+  return ["-m", "pip", "install", packageSpec];
+}
+
+function repositoryInstallArgs(packageSpec = REPOSITORY_PACKAGE_SPEC) {
   return ["-m", "pip", "install", packageSpec];
 }
 
@@ -393,9 +398,13 @@ function findProjectRootForFile(file, workspaceRoot) {
 }
 
 function looksLikeGhostProjectRoot(candidate) {
+  return isGhostTestCatcherSourceRoot(candidate) || fs.existsSync(path.join(candidate, ".ghosttest.toml"));
+}
+
+function isGhostTestCatcherSourceRoot(candidate) {
   return (
-    fs.existsSync(path.join(candidate, "src", "llmSHAP", "ghost", "cli.py")) ||
-    fs.existsSync(path.join(candidate, ".ghosttest.toml"))
+    fs.existsSync(path.join(candidate, "src", "ghost_test_catcher", "cli.py")) &&
+    fs.existsSync(path.join(candidate, "src", "llmSHAP", "ghost", "cli.py"))
   );
 }
 
@@ -1263,6 +1272,7 @@ function escapeHtml(value) {
 module.exports = {
   GHOST_CLI_COMMAND,
   GHOST_CLI_MODULE,
+  REPOSITORY_PACKAGE_SPEC,
   analysisCacheKey,
   buildAnalyzeArgs,
   costEstimateForReport,
@@ -1274,6 +1284,7 @@ module.exports = {
   findProjectRootForFile,
   inferSourcePathsFromImports,
   isTestPath,
+  isGhostTestCatcherSourceRoot,
   isPythonPath,
   mapBy,
   mergeSourcePaths,
@@ -1284,6 +1295,7 @@ module.exports = {
   parseTestFunctionLocations,
   percent,
   pypiInstallArgs,
+  repositoryInstallArgs,
   reportTestNames,
   renderGitHubActionsWorkflow,
   renderMarkdownReportSummary,

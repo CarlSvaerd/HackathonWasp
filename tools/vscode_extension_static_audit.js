@@ -88,8 +88,8 @@ function checkPackageScripts(packageJson, modules, failures) {
   const syntaxScript = String(scripts["check:syntax"] || "");
   const typecheckScript = String(scripts["check:types"] || "");
   const staticScript = String(scripts["check:static"] || "");
-  if (checkScript !== "npm run check:syntax && npm run check:types && npm run check:static") {
-    failures.push("package.json scripts.check must run syntax, type, and static extension checks in order");
+  if (!checkScript.includes("node --check extension.js") || !checkScript.includes("tsc -p tsconfig.json --noEmit") || !checkScript.includes("node ../../tools/vscode_extension_static_audit.js")) {
+    failures.push("package.json scripts.check must run syntax, type, and static extension checks directly");
   }
   if (typecheckScript !== "tsc -p tsconfig.json --noEmit") {
     failures.push("package.json scripts.check:types must run tsc -p tsconfig.json --noEmit");
@@ -104,6 +104,12 @@ function checkPackageScripts(packageJson, modules, failures) {
   }
   if (String(scripts["test:unit"] || "") !== "node --test test/*.test.js") {
     failures.push("package.json scripts.test:unit should run all Node test files with node --test test/*.test.js");
+  }
+  if (!String(scripts.package || "").includes("node ../../tools/prepare_vscode_python_bundle.js")) {
+    failures.push("package.json scripts.package must prepare the bundled Python CLI sources before building the VSIX");
+  }
+  if (String(scripts["prepare:python-bundle"] || "") !== "node ../../tools/prepare_vscode_python_bundle.js") {
+    failures.push("package.json scripts.prepare:python-bundle must run tools/prepare_vscode_python_bundle.js");
   }
 }
 
@@ -306,6 +312,9 @@ function checkVscodeIgnore(extensionDir, failures) {
     if (!text.includes(pattern)) {
       failures.push(`.vscodeignore must exclude ${pattern}`);
     }
+  }
+  if (text.includes("python-src")) {
+    failures.push(".vscodeignore must not exclude the bundled Python CLI sources in python-src/");
   }
 }
 

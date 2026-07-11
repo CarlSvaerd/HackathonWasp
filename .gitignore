@@ -13,6 +13,7 @@ HackathonWasp
 packages/vscode-extension/node_modules/
 packages/vscode-extension/*.vsix
 packages/vscode-extension/.vscode-test/
+packages/vscode-extension/python-src/
 packages/vscode-extension/pnpm-lock.yaml
 packages/vscode-extension/pnpm-workspace.yaml
 

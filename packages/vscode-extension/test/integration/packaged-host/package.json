@@ -1,0 +1,11 @@
+{
+  "name": "ghost-test-catcher-packaged-validation-host",
+  "displayName": "Ghost Test Catcher Packaged Validation Host",
+  "description": "Internal integration-test host used to validate the packaged Ghost Test Catcher VSIX.",
+  "version": "0.0.0",
+  "publisher": "carl-svaerd",
+  "private": true,
+  "engines": {
+    "vscode": "^1.88.0"
+  }
+}

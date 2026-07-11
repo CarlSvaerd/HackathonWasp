@@ -8,7 +8,7 @@ include = ["llmSHAP*", "ghost_test_catcher*"]
 
 [project]
 name = "ghost-test-catcher"
-version = "0.1.0"
+version = "0.2.8"
 description = "Ghost Test Catcher verifies whether AI-generated Python tests are grounded in real source evidence."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -28,6 +28,8 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Software Development :: Testing",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]

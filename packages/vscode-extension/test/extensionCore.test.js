@@ -87,6 +87,12 @@ test("setup helpers produce safe defaults for first-run onboarding", () => {
   });
   assert.deepEqual(core.editableInstallArgs(), ["-m", "pip", "install", "-e", ".[ghost]"]);
   assert.deepEqual(core.pypiInstallArgs(), ["-m", "pip", "install", "ghost-test-catcher[ghost]"]);
+  assert.deepEqual(core.repositoryInstallArgs(), [
+    "-m",
+    "pip",
+    "install",
+    "ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@main",
+  ]);
 });
 
 test("defaultPythonCandidates prefers workspace virtual environments before generic Python", () => {
@@ -204,6 +210,18 @@ test("findProjectRootForFile prefers a nested Python project over the open works
 
   assert.equal(core.findProjectRootForFile(testFile, workspace), project);
   assert.deepEqual(core.toRelativeSourcePaths(project, [path.join(project, "src", "demo.py")]), ["src/demo.py"]);
+});
+
+test("isGhostTestCatcherSourceRoot only matches the real Ghost package layout", () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), "ghost-source-root-"));
+  fs.writeFileSync(path.join(project, "pyproject.toml"), "[project]\nname = \"not-ghost\"\n", "utf-8");
+  assert.equal(core.isGhostTestCatcherSourceRoot(project), false);
+
+  fs.mkdirSync(path.join(project, "src", "ghost_test_catcher"), { recursive: true });
+  fs.mkdirSync(path.join(project, "src", "llmSHAP", "ghost"), { recursive: true });
+  fs.writeFileSync(path.join(project, "src", "ghost_test_catcher", "cli.py"), "def main():\n    return 0\n", "utf-8");
+  fs.writeFileSync(path.join(project, "src", "llmSHAP", "ghost", "cli.py"), "def main():\n    return 0\n", "utf-8");
+  assert.equal(core.isGhostTestCatcherSourceRoot(project), true);
 });
 
 test("extractPythonImportModules parses direct and from imports", () => {
@@ -583,7 +601,7 @@ test("renderGitHubActionsWorkflow creates a deployable CI gate", () => {
   assert.ok(workflow.includes("name: Ghost Test Catcher"));
   assert.ok(workflow.includes("actions/checkout@v4"));
   assert.ok(workflow.includes("python-version: \"3.12\""));
-  assert.ok(workflow.includes("python -m pip install \"ghost-test-catcher[ghost]\""));
+  assert.ok(workflow.includes("python -m pip install \"ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@main\""));
   assert.ok(workflow.includes("ghost-test-catcher ci"));
   assert.ok(workflow.includes("--source src lib"));
   assert.ok(workflow.includes("--tests tests"));

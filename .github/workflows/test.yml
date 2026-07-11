@@ -84,6 +84,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Resolve packaged validation Python executable
+        run: echo "GHOST_TEST_CATCHER_TEST_PYTHON=$(python -c 'import sys; print(sys.executable)')" >> "$GITHUB_ENV"
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -104,6 +112,10 @@ jobs:
       - name: Package extension
         working-directory: packages/vscode-extension
         run: npm run package
+
+      - name: Validate packaged VSIX in clean VS Code profile
+        working-directory: packages/vscode-extension
+        run: xvfb-run -a npm run test:integration:packaged
 
       - name: Upload VS Code extension VSIX
         uses: actions/upload-artifact@v4

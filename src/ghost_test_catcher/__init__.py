@@ -8,8 +8,11 @@ from llmSHAP.ghost import (
     get_language_adapter,
 )
 
+__version__ = "0.2.8"
+
 __all__ = [
     "PythonAdapter",
+    "__version__",
     "analyze_existing_tests",
     "available_language_adapters",
     "generate_and_check",

@@ -2,12 +2,14 @@
 
 const childProcess = require("child_process");
 const crypto = require("crypto");
+const fs = require("fs");
 const path = require("path");
 
 /**
  * @typedef {{
  *   baseEnv?: NodeJS.ProcessEnv,
  *   includeWorkspacePaths?: boolean,
+ *   extraPythonPaths?: string[],
  *   pathDelimiter?: string
  * }} PythonEnvOptions
  *
@@ -29,7 +31,7 @@ const path = require("path");
  * }} ExecFileOptions
  *
  * @typedef {{ stdout: string, stderr: string }} ExecFileResult
- * @typedef {Error & { cancelled?: boolean, stdout?: string, stderr?: string, exitCode?: number }} ExtensionProcessError
+ * @typedef {Error & { cancelled?: boolean, stdout?: string, stderr?: string, exitCode?: number, code?: string }} ExtensionProcessError
  */
 
 /**
@@ -44,6 +46,12 @@ function buildPythonEnv(root, options = {}) {
   const includeWorkspacePaths = Boolean(options.includeWorkspacePaths);
   const delimiter = options.pathDelimiter || path.delimiter;
   const entries = [];
+  for (const extraPath of options.extraPythonPaths || []) {
+    const candidate = String(extraPath || "").trim();
+    if (candidate) {
+      entries.push(candidate);
+    }
+  }
   if (includeWorkspacePaths) {
     entries.push(path.join(root, "src"), root);
   }
@@ -54,6 +62,31 @@ function buildPythonEnv(root, options = {}) {
     env.PYTHONPATH = entries.join(delimiter);
   }
   return env;
+}
+
+/**
+ * Finds the Python source tree that ships with the VS Code extension package.
+ * Development hosts fall back to the repository src directory.
+ *
+ * @param {string} extensionPath
+ * @returns {string}
+ */
+function resolveBundledPythonSourcePath(extensionPath) {
+  const candidates = [
+    path.join(extensionPath, "python-src"),
+    path.resolve(extensionPath, "..", "..", "src"),
+  ];
+  return candidates.find(isGhostCliSourcePath) || "";
+}
+
+/**
+ * @param {string} candidate
+ * @returns {boolean}
+ */
+function isGhostCliSourcePath(candidate) {
+  return Boolean(candidate)
+    && fsExists(path.join(candidate, "ghost_test_catcher", "cli.py"))
+    && fsExists(path.join(candidate, "llmSHAP", "ghost", "cli.py"));
 }
 
 /**
@@ -167,7 +200,9 @@ function execFile(command, args, options = {}) {
     }
 
     child.on("error", (error) => {
-      finishReject(error);
+      const processError = /** @type {ExtensionProcessError} */ (new Error(processStartFailureMessage(label, command, error)));
+      processError.code = /** @type {{ code?: string }} */ (error).code;
+      finishReject(processError);
     });
     child.on("close", (code) => {
       if (settled) {
@@ -199,6 +234,20 @@ function execFile(command, args, options = {}) {
       }
     }
   });
+}
+
+/**
+ * @param {string} label
+ * @param {string} command
+ * @param {unknown} error
+ * @returns {string}
+ */
+function processStartFailureMessage(label, command, error) {
+  const candidate = /** @type {{ code?: string, message?: string }} */ (error || {});
+  if (candidate.code === "ENOENT") {
+    return `Could not start ${label}. The executable "${command}" was not found. Check the configured path, install the required tool, or run Ghost Test Catcher: Setup.`;
+  }
+  return `Could not start ${label} with "${command}": ${candidate.message || "unknown process start error"}`;
 }
 
 /**
@@ -286,12 +335,27 @@ function toPosixPath(value) {
   return String(value).replace(/[\\/]+/g, "/");
 }
 
+/**
+ * @param {string} filePath
+ * @returns {boolean}
+ */
+function fsExists(filePath) {
+  try {
+    fs.accessSync(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 module.exports = {
   buildPythonEnv,
   createNonce,
   execFile,
   isCancellationError,
   isInsideOrEqualPath,
+  processStartFailureMessage,
+  resolveBundledPythonSourcePath,
   quoteForLog,
   shouldSkipDirectory,
   throwIfCancellationRequested,

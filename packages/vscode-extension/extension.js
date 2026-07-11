@@ -23,11 +23,13 @@ let testExplorer;
 let analysisCacheManager;
 let setupManager;
 let lastReports = [];
+let extensionPythonSourcePath = "";
 const ANALYSIS_TIMEOUT_MS = 120000;
 const DOCTOR_TIMEOUT_MS = 30000;
 const SETUP_NUDGE_STORAGE_KEY = "ghostTestCatcher.setupNudge.v1";
 
 function activate(context) {
+  extensionPythonSourcePath = utils.resolveBundledPythonSourcePath(context.extensionPath);
   const diagnostics = vscode.languages.createDiagnosticCollection("ghost-test-catcher");
   codeLensChanged = new vscode.EventEmitter();
   diagnosticManager = new diagnosticsModule.GhostDiagnosticManager({ vscode, diagnostics, codeLensChanged });
@@ -611,7 +613,14 @@ function buildPythonEnv(root, options = {}) {
   const includeWorkspacePaths = typeof options.includeWorkspacePaths === "boolean"
     ? options.includeWorkspacePaths
     : vscode.workspace.isTrusted;
-  return utils.buildPythonEnv(root, { ...options, includeWorkspacePaths });
+  return utils.buildPythonEnv(root, {
+    ...options,
+    includeWorkspacePaths,
+    extraPythonPaths: [
+      ...(extensionPythonSourcePath ? [extensionPythonSourcePath] : []),
+      ...(options.extraPythonPaths || []),
+    ],
+  });
 }
 
 async function expandSelectedPaths(selectedPaths) {

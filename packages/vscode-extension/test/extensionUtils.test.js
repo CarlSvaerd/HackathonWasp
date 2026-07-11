@@ -9,11 +9,12 @@ test("buildPythonEnv prepends trusted workspace paths before existing PYTHONPATH
   const env = utils.buildPythonEnv(root, {
     baseEnv: { PYTHONPATH: "already-there", OTHER: "kept" },
     includeWorkspacePaths: true,
+    extraPythonPaths: [path.join("C:", "extension", "python-src")],
     pathDelimiter: ";",
   });
 
   assert.equal(env.OTHER, "kept");
-  assert.equal(env.PYTHONPATH, [path.join(root, "src"), root, "already-there"].join(";"));
+  assert.equal(env.PYTHONPATH, [path.join("C:", "extension", "python-src"), path.join(root, "src"), root, "already-there"].join(";"));
 });
 
 test("buildPythonEnv can keep workspace paths out for untrusted workspaces", () => {
@@ -24,6 +25,14 @@ test("buildPythonEnv can keep workspace paths out for untrusted workspaces", () 
   });
 
   assert.equal(env.PYTHONPATH, "system-only");
+});
+
+test("resolveBundledPythonSourcePath finds packaged and development CLI sources", () => {
+  const extensionRoot = path.resolve(__dirname, "..");
+  assert.equal(
+    utils.resolveBundledPythonSourcePath(extensionRoot),
+    path.resolve(extensionRoot, "..", "..", "src")
+  );
 });
 
 test("shouldSkipDirectory ignores generated dependency and cache folders", () => {
@@ -100,6 +109,18 @@ test("execFile rejects non-zero exits with captured output", async () => {
       assert.equal(error.stdout.trim(), "out");
       assert.equal(error.stderr.trim(), "bad");
       assert.equal(error.message, "bad");
+      return true;
+    }
+  );
+});
+
+test("execFile turns missing executables into actionable setup errors", async () => {
+  await assert.rejects(
+    () => utils.execFile("__ghost_test_catcher_missing_executable__", [], { label: "missing executable smoke" }),
+    (error) => {
+      assert.equal(error.code, "ENOENT");
+      assert.ok(error.message.includes("Could not start missing executable smoke"));
+      assert.ok(error.message.includes("Ghost Test Catcher: Setup"));
       return true;
     }
   );

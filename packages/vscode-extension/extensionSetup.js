@@ -194,8 +194,9 @@ class GhostSetupManager {
   }
 
   async offerCliInstall(root, pythonPath, importMessage) {
-    const hasLocalProject = fs.existsSync(path.join(root, "pyproject.toml"));
-    const installArgs = hasLocalProject ? core.editableInstallArgs() : core.pypiInstallArgs();
+    const installArgs = core.isGhostTestCatcherSourceRoot(root)
+      ? core.editableInstallArgs()
+      : core.repositoryInstallArgs();
     const installCommand = installCommandForPython(pythonPath, installArgs);
     const choice = await this.vscode.window.showWarningMessage(
       `${importMessage} Install Ghost Test Catcher for this Python environment?`,
