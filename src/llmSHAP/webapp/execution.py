@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 SUMMARY_PATTERN = re.compile(r"(\d+)\s+(passed|failed|errors?)")
 PER_TEST_STATUS_PATTERN = re.compile(
     r"test_generated_output\.py::(?:(?P<class_name>[A-Za-z_][A-Za-z0-9_]*)::)?"
-    r"(?P<name>test_[A-Za-z0-9_]+)\s+(?P<status>PASSED|FAILED|ERROR)",
+    r"(?P<name>test_[A-Za-z0-9_]+)[ \t]+(?P<status>PASSED|FAILED|ERROR)",
     re.MULTILINE,
 )
 PRIMARY_FAILURE_PATTERNS = [

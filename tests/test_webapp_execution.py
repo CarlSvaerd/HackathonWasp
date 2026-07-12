@@ -67,6 +67,46 @@ class CalculatorTests(unittest.TestCase):
     ]
 
 
+def test_run_generated_tests_preserves_mixed_pass_fail_per_test_statuses() -> None:
+    files = [
+        UploadedContextFile(
+            path="calculator.py",
+            content="def add(a, b):\n    return a + b\n",
+            size_bytes=32,
+            line_count=2,
+            is_test_file=False,
+        )
+    ]
+
+    answer = """```python
+from calculator import add
+
+
+def test_add_returns_sum():
+    assert add(2, 3) == 5
+
+
+def test_add_rejects_wrong_sum():
+    assert add(2, 3) == 6
+```"""
+
+    result = run_generated_tests(answer, files)
+
+    assert result["status"] == "failed"
+    assert result["passed"] == 1
+    assert result["failed"] == 1
+    assert result["per_test_results"] == [
+        {
+            "name": "test_add_returns_sum",
+            "status": "passed",
+        },
+        {
+            "name": "test_add_rejects_wrong_sum",
+            "status": "failed",
+        },
+    ]
+
+
 def test_run_generated_tests_flags_invalid_code() -> None:
     files = [
         UploadedContextFile(
