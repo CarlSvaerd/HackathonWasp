@@ -1,5 +1,10 @@
 const core = require("./extensionCore");
 
+const REPORT_COMMANDS = new Set([
+  "analyzeCurrentTest",
+  "copyReportSummary",
+]);
+
 class GhostReportPanels {
   constructor(options = {}) {
     if (!options.vscode) {
@@ -9,8 +14,12 @@ class GhostReportPanels {
     this.createNonce = typeof options.createNonce === "function"
       ? options.createNonce
       : () => "";
+    this.onReportCommand = typeof options.onReportCommand === "function"
+      ? options.onReportCommand
+      : () => {};
     this.reportPanel = undefined;
     this.doctorPanel = undefined;
+    this.reportMessageDisposable = undefined;
   }
 
   openLastReport(reports, explicitResult) {
@@ -28,7 +37,15 @@ class GhostReportPanels {
         { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] }
       );
       this.reportPanel.onDidDispose(() => {
+        this.reportMessageDisposable?.dispose();
+        this.reportMessageDisposable = undefined;
         this.reportPanel = undefined;
+      });
+      this.reportMessageDisposable = this.reportPanel.webview.onDidReceiveMessage((message) => {
+        if (!message || message.type !== "command" || !REPORT_COMMANDS.has(message.command)) {
+          return;
+        }
+        this.onReportCommand(message.command);
       });
     }
 

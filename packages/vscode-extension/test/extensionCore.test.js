@@ -91,7 +91,7 @@ test("setup helpers produce safe defaults for first-run onboarding", () => {
     "-m",
     "pip",
     "install",
-    "ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@v0.2.8",
+    "ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@v0.2.9",
   ]);
 });
 
@@ -449,6 +449,32 @@ test("package manifest declares limited workspace trust and guarded execution", 
   assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.refreshTestExplorer"));
   assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.copyReportSummary"));
   assert.ok(manifest.contributes.commands.some((command) => command.command === "ghostTestCatcher.addGitHubActionsGate"));
+  assert.equal(
+    manifest.contributes.commands.find((command) => command.command === "ghostTestCatcher.analyzeCurrentTest").category,
+    "Ghost Test Catcher"
+  );
+  assert.equal(
+    manifest.contributes.commands.find((command) => command.command === "ghostTestCatcher.analyzeCurrentTest").icon,
+    "$(shield)"
+  );
+  assert.ok(
+    manifest.contributes.menus["editor/title"].some((item) =>
+      item.command === "ghostTestCatcher.analyzeCurrentTest" &&
+      item.when === "ghostTestCatcher.activeEditorIsPythonTest"
+    )
+  );
+  assert.ok(
+    manifest.contributes.menus["editor/context"].some((item) =>
+      item.command === "ghostTestCatcher.openLastReport" &&
+      item.when === "ghostTestCatcher.activeEditorHasGhostReport"
+    )
+  );
+  assert.ok(
+    manifest.contributes.menus["explorer/context"].some((item) =>
+      item.command === "ghostTestCatcher.analyzeSelectedFiles" &&
+      item.when.includes("resourceFilename =~")
+    )
+  );
   assert.deepEqual(manifest.categories, ["Testing", "Linters"]);
   assert.equal(manifest.pricing, "Free");
   assert.equal(
@@ -557,6 +583,8 @@ test("renderReportHtml escapes user-controlled text and includes exact evidence 
   assert.ok(html.includes("What does this verdict mean?"));
   assert.ok(html.includes("ETV estimates how much of the test set is worth keeping or repairing"));
   assert.ok(html.includes("Source evidence points to the files, lines, and symbols"));
+  assert.ok(html.includes("Copy Summary"));
+  assert.ok(html.includes("Analyze Active Test"));
   assert.ok(html.includes("LLM Calls"));
   assert.ok(html.includes("Est. Input Tokens"));
   assert.ok(html.includes("Content-Security-Policy"));
@@ -588,6 +616,7 @@ test("renderReportHtml includes nonce-scoped filtering script when requested", (
 
   assert.ok(html.includes("script-src 'nonce-abc123'"));
   assert.ok(html.includes("<script nonce=\"abc123\">"));
+  assert.ok(html.includes("vscode.postMessage({ type: \"command\""));
 });
 
 test("renderGitHubActionsWorkflow creates a deployable CI gate", () => {
@@ -601,7 +630,7 @@ test("renderGitHubActionsWorkflow creates a deployable CI gate", () => {
   assert.ok(workflow.includes("name: Ghost Test Catcher"));
   assert.ok(workflow.includes("actions/checkout@v4"));
   assert.ok(workflow.includes("python-version: \"3.12\""));
-  assert.ok(workflow.includes("python -m pip install \"ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@v0.2.8\""));
+  assert.ok(workflow.includes("python -m pip install \"ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@v0.2.9\""));
   assert.ok(workflow.includes("ghost-test-catcher ci"));
   assert.ok(workflow.includes("--source src lib"));
   assert.ok(workflow.includes("--tests tests"));

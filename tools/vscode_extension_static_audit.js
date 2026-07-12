@@ -20,6 +20,7 @@ const MODULE_SIZE_BUDGETS = new Map([
   ["extensionReports.js", 6000],
   ["extensionSetup.js", 24000],
   ["extensionTesting.js", 24000],
+  ["extensionUx.js", 12000],
   ["extensionUtils.js", 10000],
 ]);
 
@@ -30,6 +31,7 @@ const REQUIRED_TEST_MODULES = [
   "extensionDiagnostics",
   "extensionSetup",
   "extensionTesting",
+  "extensionUx",
   "extensionUtils",
 ];
 
@@ -67,6 +69,7 @@ function runAudit(options = {}) {
   checkCommandManifest(packageJson, moduleTexts["extension.js"] || "", failures);
   checkRestrictedWorkspaceTrust(packageJson, failures);
   checkForbiddenPatterns(moduleTexts, failures);
+  checkNotificationFlow(moduleTexts, failures);
   checkWebviewSafety(moduleTexts, failures);
   checkModuleBudgets(extensionDir, modules, failures);
   checkModuleTests(extensionDir, failures);
@@ -224,6 +227,13 @@ function checkForbiddenPatterns(moduleTexts, failures) {
   }
 }
 
+function checkNotificationFlow(moduleTexts, failures) {
+  const extensionJs = moduleTexts["extension.js"] || "";
+  if (/await\s+vscode\.window\.showErrorMessage\s*\(/.test(extensionJs)) {
+    failures.push("extension.js must not await showErrorMessage; actionable error notifications should not block commands or integration tests");
+  }
+}
+
 function checkWebviewSafety(moduleTexts, failures) {
   const reports = moduleTexts["extensionReports.js"] || "";
   const core = moduleTexts["extensionCore.js"] || "";
@@ -338,6 +348,7 @@ if (require.main === module) {
 
 module.exports = {
   checkForbiddenPatterns,
+  checkNotificationFlow,
   checkTypecheckConfig,
   listExtensionModules,
   runAudit,

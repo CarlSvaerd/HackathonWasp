@@ -27,6 +27,18 @@ test("checkForbiddenPatterns catches unsafe process and dynamic-code usage", () 
   assert.ok(failures.some((failure) => failure.includes("eval")));
 });
 
+test("checkNotificationFlow catches blocking actionable error notifications", () => {
+  const failures = [];
+  audit.checkNotificationFlow(
+    {
+      "extension.js": "async function run() { await vscode.window.showErrorMessage('failed', 'Run Doctor'); }",
+    },
+    failures
+  );
+
+  assert.ok(failures.some((failure) => failure.includes("must not await showErrorMessage")));
+});
+
 test("listExtensionModules returns only packaged extension runtime modules", () => {
   const modules = audit.listExtensionModules();
   assert.ok(modules.includes("extension.js"));

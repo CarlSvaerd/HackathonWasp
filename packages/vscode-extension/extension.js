@@ -8,6 +8,7 @@ const diagnosticsModule = require("./extensionDiagnostics");
 const reportsModule = require("./extensionReports");
 const setupModule = require("./extensionSetup");
 const testingModule = require("./extensionTesting");
+const uxModule = require("./extensionUx");
 const utils = require("./extensionUtils");
 
 const {
@@ -22,6 +23,7 @@ let outputChannel;
 let testExplorer;
 let analysisCacheManager;
 let setupManager;
+let uxManager;
 let lastReports = [];
 let extensionPythonSourcePath = "";
 const ANALYSIS_TIMEOUT_MS = 120000;
@@ -33,7 +35,11 @@ function activate(context) {
   const diagnostics = vscode.languages.createDiagnosticCollection("ghost-test-catcher");
   codeLensChanged = new vscode.EventEmitter();
   diagnosticManager = new diagnosticsModule.GhostDiagnosticManager({ vscode, diagnostics, codeLensChanged });
-  reportPanels = new reportsModule.GhostReportPanels({ vscode, createNonce: utils.createNonce });
+  reportPanels = new reportsModule.GhostReportPanels({
+    vscode,
+    createNonce: utils.createNonce,
+    onReportCommand: handleReportCommand,
+  });
   outputChannel = vscode.window.createOutputChannel("Ghost Test Catcher");
   setupManager = new setupModule.GhostSetupManager({
     vscode,
@@ -51,6 +57,10 @@ function activate(context) {
     logOutput,
   });
   analysisCacheManager.load();
+  uxManager = new uxModule.GhostUxManager({
+    vscode,
+    getLastReports: () => lastReports,
+  });
 
   context.subscriptions.push(diagnostics);
   context.subscriptions.push(codeLensChanged);
@@ -70,6 +80,7 @@ function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.openEvidence", openEvidence));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.copyMissingSymbols", copyMissingSymbols));
   context.subscriptions.push(vscode.commands.registerCommand("ghostTestCatcher.runStaticAnalysisForFile", runStaticAnalysisForFile));
+  uxManager.register(context);
   diagnosticManager.register(context);
   testExplorer = new testingModule.GhostTestExplorer({
     vscode,
@@ -91,6 +102,7 @@ function activate(context) {
 function deactivate() {
   diagnosticManager?.clear();
   testExplorer?.dispose();
+  uxManager?.dispose();
 }
 
 async function refreshTestExplorer() {
@@ -177,6 +189,16 @@ async function copyReportSummary(explicitReports) {
   await vscode.env.clipboard.writeText(markdown);
   const testCount = core.summarizeTestDecisions(reports).total;
   vscode.window.showInformationMessage(`Copied Ghost Test Catcher summary for ${testCount} test${testCount === 1 ? "" : "s"}.`);
+}
+
+async function handleReportCommand(command) {
+  if (command === "copyReportSummary") {
+    await copyReportSummary();
+    return;
+  }
+  if (command === "analyzeCurrentTest") {
+    await analyzeCurrentTest();
+  }
 }
 
 function workspaceRootForReports(reports) {
@@ -391,7 +413,7 @@ async function analyzeFiles(testFiles, title, options = {}) {
           return;
         }
         logOutput(`Analysis failed: ${error.message}`);
-        vscode.window.showErrorMessage(`Ghost Test Catcher failed: ${error.message}`);
+        showAnalysisFailureActions(error.message, testFiles[0]);
         return;
       }
       if (!reports.length) {
@@ -407,6 +429,25 @@ async function analyzeFiles(testFiles, title, options = {}) {
   );
 }
 
+function showAnalysisFailureActions(message, testFile) {
+  vscode.window.showErrorMessage(
+    `Ghost Test Catcher failed: ${message}`,
+    "Run Doctor",
+    "Open Settings",
+    "Show Output"
+  ).then(async (choice) => {
+    if (choice === "Run Doctor") {
+      await runDoctor(testFile ? vscode.Uri.file(testFile) : undefined);
+    } else if (choice === "Open Settings") {
+      await vscode.commands.executeCommand("workbench.action.openSettings", "ghostTestCatcher");
+    } else if (choice === "Show Output") {
+      outputChannel?.show(true);
+    }
+  }).catch((error) => {
+    logOutput(`Ghost Test Catcher failure-action handling failed: ${error.message}`);
+  });
+}
+
 function publishResult(testFile, result) {
   diagnosticManager?.publish(testFile, result);
 }
@@ -414,6 +455,7 @@ function publishResult(testFile, result) {
 function updateLastReports(reports) {
   lastReports = reports;
   diagnosticManager?.fireCodeLensChanged();
+  uxManager?.refresh();
 }
 
 async function resolveExecutionMode(options = {}) {
@@ -564,6 +606,7 @@ function handlePythonFileChanged(uri) {
   invalidateAnalysisCacheForPath(uri.fsPath);
   if (core.isTestPath(uri.fsPath)) {
     diagnosticManager?.deleteFile(uri);
+    discardLastReportsForFile(uri.fsPath);
     diagnosticManager?.fireCodeLensChanged();
   }
 }
@@ -574,7 +617,21 @@ function handlePythonFileDeleted(uri) {
   }
   invalidateAnalysisCacheForPath(uri.fsPath);
   diagnosticManager?.deleteFile(uri);
+  discardLastReportsForFile(uri.fsPath);
   diagnosticManager?.fireCodeLensChanged();
+}
+
+function discardLastReportsForFile(file) {
+  const normalized = core.normalizePath(file);
+  const filteredReports = lastReports.filter((report) => {
+    const reportFile = report?.__testFile;
+    return !reportFile || core.normalizePath(reportFile) !== normalized;
+  });
+  if (filteredReports.length !== lastReports.length) {
+    updateLastReports(filteredReports);
+    return;
+  }
+  uxManager?.refresh();
 }
 
 function invalidateAnalysisCacheForPath(changedPath) {

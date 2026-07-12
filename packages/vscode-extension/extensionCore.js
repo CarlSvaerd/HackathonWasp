@@ -5,7 +5,7 @@ const WEBVIEW_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data
 const GHOST_CLI_MODULE = "ghost_test_catcher.cli";
 const GHOST_CLI_COMMAND = "ghost-test-catcher";
 const PYPI_PACKAGE_SPEC = "ghost-test-catcher[ghost]";
-const REPOSITORY_PACKAGE_REF = "v0.2.8";
+const REPOSITORY_PACKAGE_REF = "v0.2.9";
 const REPOSITORY_PACKAGE_SPEC = `ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@${REPOSITORY_PACKAGE_REF}`;
 
 function buildAnalyzeArgs({ root, testFile, sourcePaths, testMode, maxFiles, executeTests, executionBackend, dockerImage }) {
@@ -914,6 +914,10 @@ function renderReportHtml(reports, options = {}) {
     .explain-item.ghost { border-left-color: #e06c75; }
     .explain-item.review { border-left-color: #d7a642; }
     .explain-item.safe { border-left-color: #4ec97a; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
+    .actions button { appearance: none; border: 1px solid #3c3c3c; border-radius: 4px; background: #2d2d2d; color: #f3f3f3; padding: 7px 10px; font: inherit; cursor: pointer; }
+    .actions button:hover { background: #37373d; }
+    .actions button:focus { outline: 1px solid #9cdcfe; outline-offset: 2px; }
     .toolbar { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 10px; margin: 16px 0 18px; padding: 12px; background: #252526; border: 1px solid #3c3c3c; border-radius: 6px; }
     .toolbar label { display: grid; gap: 5px; color: #bdbdbd; font-size: 12px; }
     .toolbar select, .toolbar input { background: #1e1e1e; color: #f3f3f3; border: 1px solid #3c3c3c; border-radius: 4px; padding: 7px; font-family: var(--vscode-font-family); min-width: 0; }
@@ -953,6 +957,7 @@ function renderReportHtml(reports, options = {}) {
   <div class="notice">Cost and cache: ${escapeHtml(costSummaryText(reports))}. Existing-test review uses local analysis and does not call an LLM.</div>
   ${renderDemoNotice(reports)}
   ${renderVerdictExplanation()}
+  ${renderReportActions()}
   ${renderReportToolbar(frameworks)}
   <div id="ghost-empty" class="empty-state hidden">No tests match the current filters.</div>
   ${body}
@@ -979,6 +984,13 @@ function renderVerdictExplanation() {
       <div class="explain-item"><strong>ETV and source evidence</strong>ETV estimates how much of the test set is worth keeping or repairing. Source evidence points to the files, lines, and symbols supporting each test.</div>
     </div>
   </details>`;
+}
+
+function renderReportActions() {
+  return `<div class="actions" aria-label="Ghost Test Catcher report actions">
+    <button type="button" data-command="copyReportSummary">Copy Summary</button>
+    <button type="button" data-command="analyzeCurrentTest">Analyze Active Test</button>
+  </div>`;
 }
 
 function renderDoctorHtml(report) {
@@ -1084,6 +1096,7 @@ function renderReportToolbar(frameworks) {
 function renderReportScript(nonce) {
   return `<script nonce="${escapeHtml(nonce)}">
 (() => {
+  const vscode = typeof acquireVsCodeApi === "function" ? acquireVsCodeApi() : null;
   const verdict = document.getElementById("filter-verdict");
   const framework = document.getElementById("filter-framework");
   const evidence = document.getElementById("filter-evidence");
@@ -1134,6 +1147,13 @@ function renderReportScript(nonce) {
   for (const control of controls) {
     control.addEventListener("input", applyFilters);
     control.addEventListener("change", applyFilters);
+  }
+  for (const button of document.querySelectorAll("[data-command]")) {
+    button.addEventListener("click", () => {
+      if (vscode) {
+        vscode.postMessage({ type: "command", command: button.dataset.command });
+      }
+    });
   }
   applyFilters();
 })();

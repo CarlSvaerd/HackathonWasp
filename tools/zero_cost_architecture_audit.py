@@ -346,12 +346,15 @@ def check_upload_artifact_retention(path: Path, text: str) -> list[str]:
 
 def check_generated_ci_workflow() -> list[str]:
     failures: list[str] = []
+    package_json = json.loads(read_text(EXTENSION_DIR / "package.json"))
+    version = str(package_json.get("version", "")).strip()
+    expected_ref = f'REPOSITORY_PACKAGE_REF = "v{version}"'
     core_path = EXTENSION_DIR / "extensionCore.js"
     text = read_text(core_path)
     if '@${REPOSITORY_PACKAGE_REF}' not in text:
         failures.append("extensionCore.js generated CI install must pin to REPOSITORY_PACKAGE_REF")
-    if 'REPOSITORY_PACKAGE_REF = "v0.2.8"' not in text:
-        failures.append("extensionCore.js generated CI install must remain pinned to the current immutable release tag")
+    if expected_ref not in text:
+        failures.append(f"extensionCore.js generated CI install must remain pinned to the current immutable release tag: v{version}")
     if "@main" in text or "@master" in text:
         failures.append("extensionCore.js generated CI install must not use moving branch refs")
     if "uses: actions/upload-artifact@v4" in text and "retention-days:" not in text:

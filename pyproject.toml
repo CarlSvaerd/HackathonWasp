@@ -8,7 +8,7 @@ include = ["llmSHAP*", "ghost_test_catcher*"]
 
 [project]
 name = "ghost-test-catcher"
-version = "0.2.8"
+version = "0.2.9"
 description = "Ghost Test Catcher verifies whether AI-generated Python tests are grounded in real source evidence."
 readme = "README.md"
 requires-python = ">=3.11"

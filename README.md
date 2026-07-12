@@ -387,13 +387,14 @@ It provides:
 - `Ghost Test Catcher: Analyze Changed Test Files`
 - `Ghost Test Catcher: Analyze Selected Files or Folders`
 - `Ghost Test Catcher: Run Doctor`
+- a context-sensitive editor title action and `Ghost Test: Analyze` status-bar action for Python test files
 - inline diagnostics on `def test_*` functions and class-based test methods
 - CodeLens verdict summaries
 - native VS Code Testing panel discovery for pytest-style functions and `unittest.TestCase` methods
 - an `Analyze with Ghost Test Catcher` Testing panel run profile
 - a filterable report panel with reliability, ETV, framework, test-run status, risk categories, recommendations, evidence, and missing symbols
 - persistent workspace report caching that restores diagnostics and CodeLens after reloads
-- Quick Fix actions to open evidence files, copy missing symbols, and rerun static analysis
+- Quick Fix actions to open evidence files, open the full report, copy missing symbols, and rerun static analysis
 - a GitHub Actions gate generator for `ghost-test-catcher ci`
 - optional Docker-backed execution from the extension
 - smart source context that resolves local imports from the active test before broader configured source folders
@@ -418,10 +419,10 @@ The packaged VS Code extension includes the analyzer sources needed for `ghost_t
 python -m pip install pytest
 ```
 
-For standalone CLI usage or generated CI workflows, install from the public GitHub repository pinned to the `v0.2.8` release tag until PyPI publishing is completed:
+For standalone CLI usage or generated CI workflows, install from the public GitHub repository pinned to the `v0.2.9` release tag until PyPI publishing is completed:
 
 ```bash
-python -m pip install "ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@v0.2.8"
+python -m pip install "ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@v0.2.9"
 ```
 
 When developing this repository, use an editable install instead:
@@ -457,7 +458,7 @@ npm run package
 
 `npm run test:integration` launches VS Code with `@vscode/test-electron`, opens the fixture Python workspace, activates the extension, runs Doctor, analyzes the active test file, checks Ghost Test Catcher diagnostics, and refreshes the Testing panel. Set `GHOST_TEST_CATCHER_TEST_PYTHON` if your desired Python executable is not named `python`.
 
-That produces `ghost-test-catcher-0.2.8.vsix`, installable through `Extensions: Install from VSIX...`.
+That produces `ghost-test-catcher-0.2.9.vsix`, installable through `Extensions: Install from VSIX...`.
 
 The extension package includes Marketplace metadata, a PNG icon, a changelog, and a `.vscodeignore` that excludes local build artifacts.
 The icon is reproducible:

@@ -2,7 +2,7 @@
   "name": "ghost-test-catcher",
   "displayName": "Ghost Test Catcher",
   "description": "Detect whether AI-generated Python tests are grounded in your actual source code.",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "publisher": "carl-svaerd",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -74,8 +74,8 @@
   ],
   "main": "./extension.js",
   "scripts": {
-    "check": "node --check extension.js && node --check extensionCache.js && node --check extensionCore.js && node --check extensionDemo.js && node --check extensionDiagnostics.js && node --check extensionReports.js && node --check extensionSetup.js && node --check extensionTesting.js && node --check extensionUtils.js && tsc -p tsconfig.json --noEmit && node ../../tools/vscode_extension_static_audit.js",
-    "check:syntax": "node --check extension.js && node --check extensionCache.js && node --check extensionCore.js && node --check extensionDemo.js && node --check extensionDiagnostics.js && node --check extensionReports.js && node --check extensionSetup.js && node --check extensionTesting.js && node --check extensionUtils.js",
+    "check": "node --check extension.js && node --check extensionCache.js && node --check extensionCore.js && node --check extensionDemo.js && node --check extensionDiagnostics.js && node --check extensionReports.js && node --check extensionSetup.js && node --check extensionTesting.js && node --check extensionUx.js && node --check extensionUtils.js && tsc -p tsconfig.json --noEmit && node ../../tools/vscode_extension_static_audit.js",
+    "check:syntax": "node --check extension.js && node --check extensionCache.js && node --check extensionCore.js && node --check extensionDemo.js && node --check extensionDiagnostics.js && node --check extensionReports.js && node --check extensionSetup.js && node --check extensionTesting.js && node --check extensionUx.js && node --check extensionUtils.js",
     "check:types": "tsc -p tsconfig.json --noEmit",
     "check:static": "node ../../tools/vscode_extension_static_audit.js",
     "test": "node --test test/*.test.js",
@@ -85,7 +85,7 @@
     "test:integration:ci": "node test/integration/runCi.js",
     "test:all": "node --test test/*.test.js && node test/integration/runTest.js",
     "prepare:python-bundle": "node ../../tools/prepare_vscode_python_bundle.js",
-    "package": "node ../../tools/prepare_vscode_python_bundle.js && vsce package --no-dependencies --out ghost-test-catcher-0.2.8.vsix"
+    "package": "node ../../tools/prepare_vscode_python_bundle.js && vsce package --no-dependencies --out ghost-test-catcher-0.2.9.vsix"
   },
   "devDependencies": {
     "@types/node": "^20.17.6",
@@ -152,51 +152,75 @@
     "commands": [
       {
         "command": "ghostTestCatcher.analyzeDemoGhostTest",
-        "title": "Ghost Test Catcher: Analyze Demo Ghost Test"
+        "title": "Analyze Demo",
+        "category": "Ghost Test Catcher",
+        "icon": "$(beaker)"
       },
       {
         "command": "ghostTestCatcher.analyzeCurrentTest",
-        "title": "Ghost Test Catcher: Analyze Current Test File"
+        "title": "Analyze Current Test File",
+        "category": "Ghost Test Catcher",
+        "icon": "$(shield)"
       },
       {
         "command": "ghostTestCatcher.analyzeChangedTests",
-        "title": "Ghost Test Catcher: Analyze Changed Test Files"
+        "title": "Analyze Changed Test Files",
+        "category": "Ghost Test Catcher",
+        "icon": "$(git-compare)"
       },
       {
         "command": "ghostTestCatcher.analyzeSelectedFiles",
-        "title": "Ghost Test Catcher: Analyze Selected Files or Folders"
+        "title": "Analyze Selected Files or Folders",
+        "category": "Ghost Test Catcher",
+        "icon": "$(search)"
       },
       {
         "command": "ghostTestCatcher.setup",
-        "title": "Ghost Test Catcher: Setup"
+        "title": "Setup",
+        "category": "Ghost Test Catcher",
+        "icon": "$(gear)"
       },
       {
         "command": "ghostTestCatcher.openSetupGuide",
-        "title": "Ghost Test Catcher: Open Setup Guide"
+        "title": "Open Setup Guide",
+        "category": "Ghost Test Catcher",
+        "icon": "$(book)"
       },
       {
         "command": "ghostTestCatcher.runDoctor",
-        "title": "Ghost Test Catcher: Run Doctor"
+        "title": "Run Doctor",
+        "category": "Ghost Test Catcher",
+        "icon": "$(debug-alt)"
       },
       {
         "command": "ghostTestCatcher.openLastReport",
-        "title": "Ghost Test Catcher: Open Last Report"
+        "title": "Open Latest Report",
+        "category": "Ghost Test Catcher",
+        "icon": "$(preview)"
       },
       {
         "command": "ghostTestCatcher.refreshTestExplorer",
-        "title": "Ghost Test Catcher: Refresh Testing Panel"
+        "title": "Refresh Testing Panel",
+        "category": "Ghost Test Catcher",
+        "icon": "$(refresh)"
       },
       {
         "command": "ghostTestCatcher.clearAnalysisCache",
-        "title": "Ghost Test Catcher: Clear Analysis Cache"
+        "title": "Clear Analysis Cache",
+        "category": "Ghost Test Catcher",
+        "icon": "$(trash)"
       },
       {
         "command": "ghostTestCatcher.copyReportSummary",
-        "title": "Ghost Test Catcher: Copy Report Summary"
+        "title": "Copy Report Summary",
+        "category": "Ghost Test Catcher",
+        "icon": "$(copy)"
       },
       {
         "command": "ghostTestCatcher.addGitHubActionsGate",
-        "title": "Ghost Test Catcher: Add GitHub Actions Gate"
+        "title": "Add GitHub Actions Gate",
+        "category": "Ghost Test Catcher",
+        "icon": "$(github-action)"
       }
     ],
     "configuration": {
@@ -323,31 +347,36 @@
       "editor/title": [
         {
           "command": "ghostTestCatcher.analyzeCurrentTest",
-          "when": "resourceLangId == python",
-          "group": "navigation"
+          "when": "ghostTestCatcher.activeEditorIsPythonTest",
+          "group": "navigation@1"
+        },
+        {
+          "command": "ghostTestCatcher.openLastReport",
+          "when": "ghostTestCatcher.activeEditorHasGhostReport",
+          "group": "navigation@2"
         }
       ],
       "editor/context": [
         {
-          "command": "ghostTestCatcher.analyzeSelectedFiles",
-          "when": "resourceLangId == python",
-          "group": "navigation"
+          "command": "ghostTestCatcher.analyzeCurrentTest",
+          "when": "ghostTestCatcher.activeEditorIsPythonTest",
+          "group": "navigation@1"
         },
         {
-          "command": "ghostTestCatcher.runDoctor",
-          "when": "resourceLangId == python",
+          "command": "ghostTestCatcher.openLastReport",
+          "when": "ghostTestCatcher.activeEditorHasGhostReport",
           "group": "navigation@2"
         }
       ],
       "explorer/context": [
         {
           "command": "ghostTestCatcher.analyzeSelectedFiles",
-          "when": "resourceLangId == python || explorerResourceIsFolder",
-          "group": "navigation"
+          "when": "explorerResourceIsFolder || resourceFilename =~ /(^test_.*\\.py$|.*_test\\.py$)/ || resourceDirname =~ /(^|[\\\\/])tests([\\\\/]|$)/",
+          "group": "navigation@1"
         },
         {
           "command": "ghostTestCatcher.runDoctor",
-          "when": "resourceLangId == python || explorerResourceIsFolder",
+          "when": "explorerResourceIsFolder || resourceFilename =~ /(^test_.*\\.py$|.*_test\\.py$)/ || resourceDirname =~ /(^|[\\\\/])tests([\\\\/]|$)/",
           "group": "navigation@2"
         }
       ]

@@ -30,12 +30,14 @@ It runs inside VS Code as a review tool for generated or suspicious tests: pick 
 
 ## Quick Start
 
-1. Run `Ghost Test Catcher: Analyze Demo Ghost Test` from the command palette to see a self-contained report with one grounded test and one high-risk ghost test. This demo does not modify your project and does not call an LLM.
-2. Open a Python project in VS Code.
-3. Run `Ghost Test Catcher: Setup`.
-4. Choose local execution, static-only review, or Docker isolation.
-5. Open a Python test file and run `Ghost Test Catcher: Analyze Current Test File`.
-6. Review diagnostics, CodeLens verdicts, the report panel, and Testing panel results.
+1. Open a Python project in VS Code.
+2. Run `Ghost Test Catcher: Setup` once and choose local execution, static-only review, or Docker isolation.
+3. Open a Python test file.
+4. Click the editor-title shield action or the `Ghost Test: Analyze` status-bar item.
+5. Review diagnostics, CodeLens verdicts, the report panel, and Testing panel results.
+6. Use the report panel's `Copy Summary` action when you want a Markdown review summary for a pull request or team chat.
+
+For a zero-setup preview, run `Ghost Test Catcher: Analyze Demo` from the walkthrough, setup prompt, or command palette. The demo opens a self-contained report with one grounded test and one high-risk ghost test, does not modify your project, and does not call an LLM.
 
 The extension also contributes a VS Code walkthrough and shows a one-time setup prompt in workspaces that contain Python tests.
 
@@ -43,7 +45,7 @@ The extension also contributes a VS Code walkthrough and shows a one-time setup 
 
 - **Guided setup:** detects Python, validates `ghost_test_catcher.cli`, writes workspace settings, and opens Doctor.
 - **Instant demo:** opens a self-contained ghost-test report so new users can understand the verdicts before configuring Python.
-- **Current-file review:** analyze the active Python test file from the command palette, editor title, or context menu.
+- **Current-file review:** analyze the active Python test file from the editor title, status bar, context menu, Testing panel, or command palette.
 - **Changed-test review:** analyze changed Python test files in the current Git workspace.
 - **Selection review:** analyze selected test files or folders with explicitly selected source context.
 - **Smart source context:** automatically includes local source files imported by the selected test file before broader configured folders.
@@ -54,7 +56,7 @@ The extension also contributes a VS Code walkthrough and shows a one-time setup 
 - **Native Testing panel:** discovers Python tests and runs `Analyze with Ghost Test Catcher` as a VS Code test profile.
 - **Configurable cache persistence:** restores valid diagnostics, CodeLens, and reports after reloads by default, with an in-memory-only privacy mode for sensitive workspaces.
 - **Visible cost and cache signals:** reports and completion messages show LLM call estimates, token estimates, and whether results came from cache.
-- **Quick Fix actions:** open evidence files, copy missing symbols, and rerun static-only analysis.
+- **Quick Fix actions:** open evidence files, open the full report, copy missing symbols, and rerun static-only analysis.
 - **CI generator:** writes a ready-to-use GitHub Actions gate with `Ghost Test Catcher: Add GitHub Actions Gate`.
 - **Docker backend:** optionally execute tests through a configured Docker image with network disabled.
 - **Nested project detection:** finds Python project roots even when VS Code is opened at a parent folder.
@@ -74,10 +76,10 @@ Install `pytest` in the configured Python environment when you want Ghost Test C
 python -m pip install pytest
 ```
 
-For standalone CLI usage or generated CI workflows, install from the public GitHub repository pinned to the `v0.2.8` release tag until the PyPI package is published:
+For standalone CLI usage or generated CI workflows, install from the public GitHub repository pinned to the `v0.2.9` release tag until the PyPI package is published:
 
 ```bash
-python -m pip install "ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@v0.2.8"
+python -m pip install "ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@v0.2.9"
 ```
 
 During local development from this repository, use an editable install instead:
@@ -93,7 +95,7 @@ For normal users, start with `Ghost Test Catcher: Setup`. Setup checks the confi
 ## Commands
 
 - `Ghost Test Catcher: Setup`
-- `Ghost Test Catcher: Analyze Demo Ghost Test`
+- `Ghost Test Catcher: Analyze Demo`
 - `Ghost Test Catcher: Analyze Current Test File`
 - `Ghost Test Catcher: Analyze Changed Test Files`
 - `Ghost Test Catcher: Analyze Selected Files or Folders`
@@ -142,9 +144,9 @@ The normal VS Code review path analyzes existing tests with local parsing, sourc
 
 Report verdicts are intentionally simple. `Reliable` means the tests are grounded in source evidence and execution is clean when enabled. `Needs review` means some evidence exists but context, symbols, or execution still need human judgment. `Ghost risk` means a test likely references APIs, workflows, or behavior that the selected source evidence does not support. ETV, or Effective Test Value, estimates how much of the test set is worth keeping or repairing after grounding and execution checks. Source evidence points to the files, lines, and symbols behind each decision.
 
-Diagnostics expose Quick Fixes for common review actions: open the best evidence file at the reported line, copy missing symbols to the clipboard, or rerun the selected file with static analysis only. The report panel includes client-side filters and expandable evidence details for larger review sessions. Use `Ghost Test Catcher: Copy Report Summary` after analysis to copy a Markdown summary with decision counts, verdict counts, cost/cache details, per-file results, true ETV, per-test grounding, execution status, symbol signals, evidence locations, and action guidance.
+Diagnostics expose Quick Fixes for common review actions: open the best evidence file at the reported line, open the full report, copy missing symbols to the clipboard, or rerun the selected file with static analysis only. The report panel includes client-side filters, expandable evidence details, and direct `Copy Summary` / `Analyze Active Test` actions for larger review sessions. Use `Ghost Test Catcher: Copy Report Summary` after analysis to copy a Markdown summary with decision counts, verdict counts, cost/cache details, per-file results, true ETV, per-test grounding, execution status, symbol signals, evidence locations, and action guidance.
 
-Use `Ghost Test Catcher: Add GitHub Actions Gate` to write `.github/workflows/ghost-test-catcher.yml` for pull-request and main-branch checks. The generated workflow installs the CLI from the public GitHub repository pinned to the `v0.2.8` release tag while PyPI publishing is pending, runs `ghost-test-catcher ci`, publishes a Markdown summary, and uploads JSON/Markdown artifacts.
+Use `Ghost Test Catcher: Add GitHub Actions Gate` to write `.github/workflows/ghost-test-catcher.yml` for pull-request and main-branch checks. The generated workflow installs the CLI from the public GitHub repository pinned to the `v0.2.9` release tag while PyPI publishing is pending, runs `ghost-test-catcher ci`, publishes a Markdown summary, and uploads JSON/Markdown artifacts.
 
 ## Privacy, Cost, And Limits
 
@@ -181,4 +183,4 @@ npm run package
 
 `npm run test:integration` uses `@vscode/test-electron` to download or reuse VS Code, open the fixture workspace in an Extension Development Host, run Doctor, analyze a Python test file, verify diagnostics, and refresh the Testing panel. Set `GHOST_TEST_CATCHER_TEST_PYTHON` when the desired Python executable is not simply `python`.
 
-The package command creates `ghost-test-catcher-0.2.8.vsix`, which can be installed in VS Code with `Extensions: Install from VSIX...`.
+The package command creates `ghost-test-catcher-0.2.9.vsix`, which can be installed in VS Code with `Extensions: Install from VSIX...`.

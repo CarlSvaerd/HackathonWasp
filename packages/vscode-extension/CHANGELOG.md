@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.9
+
+- Added a context-sensitive `Ghost Test: Analyze` status-bar action that appears only for supported Python test files, runs analysis before a report exists, and opens the latest report after analysis.
+- Tightened editor-title, editor-context, and Explorer menu contributions so primary analysis actions appear on Python test files or useful folder selections instead of every Python source file.
+- Added report-panel actions for `Copy Summary` and `Analyze Active Test`, reducing the need to return to the Command Palette after a report opens.
+- Added `Open Full Report` as a Ghost Test Catcher Quick Fix so diagnostics can act as a gateway back to the complete review.
+- Improved analysis failure recovery with one-click `Run Doctor`, `Open Settings`, and `Show Output` actions.
+- Updated generated CI workflows and release documentation to use the pinned public `v0.2.9` GitHub tag while the PyPI package is not yet published.
+- Updated the VSIX output filename to `ghost-test-catcher-0.2.9.vsix`.
+
 ## 0.2.8
 
 - Added `Ghost Test Catcher: Analyze Demo Ghost Test`, a self-contained first-run report that shows one source-backed passing test and one high-risk ghost test without modifying the user's project.

@@ -149,6 +149,17 @@ class GhostDiagnosticManager {
         actions.push(openEvidenceAction);
       }
 
+      const openReportAction = new this.vscode.CodeAction(
+        "Ghost Test Catcher: Open Full Report",
+        this.vscode.CodeActionKind.QuickFix
+      );
+      openReportAction.command = {
+        title: "Open Full Report",
+        command: "ghostTestCatcher.openLastReport",
+      };
+      openReportAction.diagnostics = [diagnostic];
+      actions.push(openReportAction);
+
       if (quickFixContext.missingSymbols?.length) {
         const copySymbolsAction = new this.vscode.CodeAction(
           "Ghost Test Catcher: Copy Missing Symbols",

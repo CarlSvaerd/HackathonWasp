@@ -52,7 +52,7 @@ async function loadsInstalledExtension() {
   assert.ok(vscode.workspace.workspaceFolders?.length, "expected the copied fixture workspace to be open");
   const extension = vscode.extensions.getExtension(EXTENSION_ID);
   assert.ok(extension, `expected ${EXTENSION_ID} to be installed from the VSIX`);
-  assert.equal(extension.packageJSON.version, process.env.GHOST_TEST_CATCHER_EXPECTED_VERSION || "0.2.8");
+  assert.equal(extension.packageJSON.version, process.env.GHOST_TEST_CATCHER_EXPECTED_VERSION || "0.2.9");
   assert.ok(!extension.extensionPath.includes(`${path.sep}packages${path.sep}vscode-extension`), `expected an installed extension path, got ${extension.extensionPath}`);
   await extension.activate();
 
@@ -116,7 +116,7 @@ async function generatesCiWorkflow() {
   const workflow = fs.readFileSync(workflowPath, "utf-8");
   assert.ok(workflow.includes("ghost-test-catcher ci"), "expected the workflow to run the CLI gate");
   assert.ok(
-    workflow.includes("ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@v0.2.8"),
+    workflow.includes("ghost-test-catcher[ghost] @ git+https://github.com/CarlSvaerd/HackathonWasp.git@v0.2.9"),
     "expected the generated workflow to use the tagged repository install path while PyPI is unpublished"
   );
 }
