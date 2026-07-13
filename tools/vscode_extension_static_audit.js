@@ -237,7 +237,8 @@ function checkNotificationFlow(moduleTexts, failures) {
 function checkWebviewSafety(moduleTexts, failures) {
   const reports = moduleTexts["extensionReports.js"] || "";
   const core = moduleTexts["extensionCore.js"] || "";
-  if (reports.includes("enableScripts: true") && !reports.includes("renderReportHtml(selectedReports, { nonce: this.createNonce() })")) {
+  const freshReportNoncePattern = /renderReportHtml\(\s*selectedReports\s*,\s*\{[\s\S]*?\bnonce\s*:\s*this\.createNonce\(\)/;
+  if (reports.includes("enableScripts: true") && !freshReportNoncePattern.test(reports)) {
     failures.push("script-enabled report webview must render with a fresh nonce");
   }
   if (!reports.includes("localResourceRoots: []")) {

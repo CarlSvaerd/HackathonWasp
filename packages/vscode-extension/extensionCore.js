@@ -896,7 +896,7 @@ function mapBy(items, key) {
 function renderReportHtml(reports, options = {}) {
   const nonce = options.nonce || "";
   const frameworks = uniqueFrameworks(reports);
-  const body = reports.map(renderSingleReport).join("");
+  const body = reports.map((report) => renderSingleReport(report, options)).join("");
   return `<!doctype html>
 <html>
 <head>
@@ -908,7 +908,7 @@ function renderReportHtml(reports, options = {}) {
     .notice { margin-top: 14px; padding: 12px 14px; border: 1px solid #3c3c3c; border-radius: 6px; background: #252526; color: #d4d4d4; }
     .explain { margin-top: 10px; padding: 12px 14px; border: 1px solid #3c3c3c; border-radius: 6px; background: #202020; color: #d4d4d4; }
     .explain summary { color: #f3f3f3; font-weight: 600; }
-    .explain-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+    .explain-grid { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 10px; margin-top: 10px; }
     .explain-item { border-left: 3px solid #6796e6; padding-left: 10px; color: #cfcfcf; }
     .explain-item strong { display: block; color: #f3f3f3; margin-bottom: 3px; }
     .explain-item.ghost { border-left-color: #e06c75; }
@@ -947,7 +947,8 @@ function renderReportHtml(reports, options = {}) {
     .hidden { display: none; }
     .empty-state { border: 1px solid #3c3c3c; border-radius: 6px; padding: 16px; color: #bdbdbd; background: #252526; }
     @media (max-width: 980px) { .toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-    @media (max-width: 820px) { .grid, .explain-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 1100px) { .explain-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 820px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 620px) { .toolbar { grid-template-columns: 1fr; } }
     @media (max-width: 620px) { .explain-grid { grid-template-columns: 1fr; } }
   </style>
@@ -1160,7 +1161,7 @@ function renderReportScript(nonce) {
   </script>`;
 }
 
-function renderSingleReport(result) {
+function renderSingleReport(result, options = {}) {
   const trust = result.trust_assessment || {};
   const execution = result.execution || {};
   const components = trust.components || {};
@@ -1208,7 +1209,7 @@ function renderSingleReport(result) {
   return `<section class="report" data-verdict="${escapeHtml(trust.verdict || "needs_review")}">
     <div class="hero ${escapeHtml(trust.verdict || "needs_review")}">
       <h2>${escapeHtml(verdictLabel(trust.verdict || "needs_review"))}</h2>
-      <div class="path">${escapeHtml(result.__testFile || (result.input_test_files || []).map((item) => item.path).join(", "))}</div>
+      <div class="path">${escapeHtml(reportDisplayPath(result, options))}</div>
       <p>${escapeHtml(trust.message || "")}</p>
     </div>
     <div class="grid">

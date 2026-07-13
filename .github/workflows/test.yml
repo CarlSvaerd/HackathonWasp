@@ -129,7 +129,7 @@ jobs:
         with:
           name: ghost-test-catcher-vsix
           retention-days: 14
-          path: packages/vscode-extension/ghost-test-catcher-0.2.9.vsix
+          path: packages/vscode-extension/ghost-test-catcher-0.2.10.vsix
 
   vscode-extension-integration:
     name: VS Code integration (${{ matrix.os }})

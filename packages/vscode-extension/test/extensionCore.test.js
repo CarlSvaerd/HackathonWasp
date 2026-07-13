@@ -604,6 +604,34 @@ test("renderReportHtml escapes user-controlled text and includes exact evidence 
   assert.ok(!html.includes("<script>alert(1)</script>"));
 });
 
+test("renderReportHtml displays workspace-relative report paths", () => {
+  const html = core.renderReportHtml([
+    {
+      __testFile: "C:\\Users\\carlh\\Documents\\ProjectR\\HackathonWasp\\tests\\test_checkout.py",
+      trust_assessment: {
+        verdict: "reliable",
+        message: "The generated tests look well-grounded in the uploaded files.",
+        reliability_score: 0.9,
+        components: { etv_score: 1 },
+      },
+      cost_estimate: { llm_calls: 0, estimated_input_tokens: 0, estimated_output_token_ceiling: 0 },
+      execution: {
+        status: "passed",
+        passed: 1,
+        test_count: 1,
+        per_test_results: [{ name: "test_checkout_total", status: "passed" }],
+      },
+      generated_tests: { test_names: ["test_checkout_total"] },
+      verification: {
+        claim_checks: [{ claim: "test_checkout_total", status: "supported", confidence: 0.93, framework: "pytest" }],
+      },
+    },
+  ], { workspaceRoot: "C:\\Users\\carlh\\Documents\\ProjectR\\HackathonWasp" });
+
+  assert.ok(html.includes("tests/test_checkout.py"));
+  assert.ok(!html.includes("C:\\Users\\carlh"));
+});
+
 test("renderReportHtml includes nonce-scoped filtering script when requested", () => {
   const html = core.renderReportHtml([
     {

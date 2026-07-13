@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.10
+
+- Replaced Marketplace README screenshots with real v0.2.10 VS Code captures that show the editor-title Analyze action, context-sensitive status bar, diagnostics/Quick Fix flow, report action buttons, and native Testing panel integration.
+- Reordered the extension README around the primary no-Command-Palette workflow: open a Python test, click the visible Analyze action, review diagnostics, then open the report for evidence.
+- Displayed report test paths relative to the workspace and compacted the wide report explanation grid so Marketplace screenshots and day-to-day reports avoid unnecessary local path exposure while showing more evidence on screen.
+- Kept generated CI workflows pinned to the verified immutable `v0.2.9` repository install path while preparing the VS Code extension package as `ghost-test-catcher-0.2.10.vsix`.
+
 ## 0.2.9
 
 - Added a context-sensitive `Ghost Test: Analyze` status-bar action that appears only for supported Python test files, runs analysis before a report exists, and opens the latest report after analysis.

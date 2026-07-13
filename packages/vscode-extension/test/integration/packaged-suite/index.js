@@ -52,7 +52,7 @@ async function loadsInstalledExtension() {
   assert.ok(vscode.workspace.workspaceFolders?.length, "expected the copied fixture workspace to be open");
   const extension = vscode.extensions.getExtension(EXTENSION_ID);
   assert.ok(extension, `expected ${EXTENSION_ID} to be installed from the VSIX`);
-  assert.equal(extension.packageJSON.version, process.env.GHOST_TEST_CATCHER_EXPECTED_VERSION || "0.2.9");
+  assert.equal(extension.packageJSON.version, process.env.GHOST_TEST_CATCHER_EXPECTED_VERSION || "0.2.10");
   assert.ok(!extension.extensionPath.includes(`${path.sep}packages${path.sep}vscode-extension`), `expected an installed extension path, got ${extension.extensionPath}`);
   await extension.activate();
 

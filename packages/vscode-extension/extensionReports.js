@@ -49,8 +49,29 @@ class GhostReportPanels {
       });
     }
 
-    this.reportPanel.webview.html = core.renderReportHtml(selectedReports, { nonce: this.createNonce() });
+    this.reportPanel.webview.html = core.renderReportHtml(selectedReports, {
+      nonce: this.createNonce(),
+      workspaceRoot: this.workspaceRootForReports(selectedReports),
+    });
     this.reportPanel.reveal(this.vscode.ViewColumn.Beside);
+  }
+
+  workspaceRootForReports(reports) {
+    for (const result of reports || []) {
+      const candidate = result?.__testFile || result?.input_test_files?.find((item) => item?.path)?.path;
+      if (!candidate || !this.isAbsoluteFilePath(candidate)) {
+        continue;
+      }
+      const folder = this.vscode.workspace.getWorkspaceFolder(this.vscode.Uri.file(candidate));
+      if (folder) {
+        return folder.uri.fsPath;
+      }
+    }
+    return this.vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || "";
+  }
+
+  isAbsoluteFilePath(candidate) {
+    return /^[a-zA-Z]:[\\/]/.test(candidate) || candidate.startsWith("/") || candidate.startsWith("\\\\");
   }
 
   openDoctorReport(report) {

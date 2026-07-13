@@ -74,7 +74,7 @@ For local CI parity, run `npm run test:integration:ci`. The wrapper uses `xvfb-r
 ## VSIX Installation Smoke Test
 
 ```bash
-code --install-extension packages/vscode-extension/ghost-test-catcher-0.2.9.vsix --force
+code --install-extension packages/vscode-extension/ghost-test-catcher-0.2.10.vsix --force
 ```
 
 After installation, run `Ghost Test Catcher: Analyze Demo Ghost Test` from the command palette. Confirm it opens a report with one safe-to-keep test, one high-risk ghost test, `0 LLM calls`, a visible `What does this verdict mean?` explanation, ETV/source-evidence wording, and demo copy that says no project files were modified.
@@ -109,12 +109,12 @@ The package is prepared for Marketplace packaging with:
 - `bugs`
 - `galleryBanner`
 - a PNG icon at `media/icon.png`
-- Marketplace README screenshots in `media/screenshot-report.png`, `media/screenshot-diagnostics.png`, and `media/screenshot-testing.png`
+- Marketplace README screenshots in `media/screenshot-primary-workflow.png`, `media/screenshot-diagnostics.png`, `media/screenshot-report.png`, and `media/screenshot-testing.png`
 - VS Code walkthrough Markdown in `media/walkthrough-demo.md`, `media/walkthrough-setup.md`, `media/walkthrough-review.md`, and `media/walkthrough-ci.md`
 - a changelog at `CHANGELOG.md`
 - bundled Python analyzer sources generated into `python-src/` at package time
 
-The VS Code publishing documentation states that extension icons may not be SVG when publishing. Keep `media/icon.png` as the published icon and regenerate it with `python tools/generate_vscode_extension_icon.py` when the design changes. Regenerate Marketplace screenshots with `python tools/generate_vscode_marketplace_assets.py` when the report, diagnostics, or Testing panel story changes. This release uses real PNG screenshots already checked into `packages/vscode-extension/media`. No GIF is packaged; if a GIF is added later, capture a real flow of `Ghost Test Catcher: Analyze Demo Ghost Test` followed by `Ghost Test Catcher: Analyze Current Test File` and place it at `packages/vscode-extension/media/demo-flow.gif`, then reference it from the extension README.
+The VS Code publishing documentation states that extension icons may not be SVG when publishing. Keep `media/icon.png` as the published icon and regenerate it with `python tools/generate_vscode_extension_icon.py` when the design changes. Marketplace screenshots should be real captures from an isolated VS Code profile with the packaged extension installed, not mockups or generated composites. This release uses real PNG screenshots already checked into `packages/vscode-extension/media`. No GIF is packaged; if a GIF is added later, capture a real flow of opening a Python test, clicking the visible editor-title or status-bar Analyze action, reviewing diagnostics, and opening the report, then place it at `packages/vscode-extension/media/demo-flow.gif` and reference it from the extension README.
 
 The public PyPI project name `ghost-test-catcher` is not published as of the v0.2.9 release-prep validation. The VS Code extension works around that by bundling analyzer sources, and generated CI workflows install from the public GitHub repository pinned to the immutable `v0.2.9` git tag. Publishing the Python package to PyPI remains a Marketplace-readiness follow-up for teams that want `pip install "ghost-test-catcher[ghost]"` instead of a GitHub direct-reference install.
 
@@ -128,7 +128,7 @@ Use `--fail-on ghost_risk` for the first rollout. It blocks only the highest-ris
 
 1. Run the local verification commands.
 2. Confirm `python tools/repo_hygiene_audit.py` and `python tools/zero_cost_architecture_audit.py` pass before packaging or publishing.
-3. Confirm `packages/vscode-extension/ghost-test-catcher-0.2.9.vsix` was rebuilt.
+3. Confirm `packages/vscode-extension/ghost-test-catcher-0.2.10.vsix` was rebuilt.
 4. Run `python tools/zero_cost_architecture_audit.py --require-vsix --require-python-artifacts` from the repository root to inspect the VSIX, wheel, and sdist for secrets and cost-risk regressions.
 5. Run `npm run test:integration:packaged` from `packages/vscode-extension` to validate the rebuilt VSIX in a clean VS Code profile.
 6. Install the VSIX locally and run the extension against at least one grounded test and one intentionally ghost-risk test.

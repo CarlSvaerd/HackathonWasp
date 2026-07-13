@@ -4,7 +4,9 @@
 
 Ghost Test Catcher helps you decide whether Python tests, especially AI-generated tests, are grounded in the source code they claim to verify.
 
-It runs inside VS Code as a review tool for generated or suspicious tests: pick a test file, run analysis, and get per-test diagnostics, source evidence, missing symbols, execution status, and a verdict you can use before keeping, merging, or trusting the tests.
+It runs inside VS Code as a local-first review tool for generated or suspicious tests: open a Python test file, click the visible Ghost Test Catcher Analyze action, and get per-test diagnostics, source evidence, missing symbols, execution status, and a verdict you can use before keeping, merging, or trusting the tests.
+
+Ghost tests are tests that look convincing but are not grounded in the real implementation. They may call APIs that do not exist, assert workflows the product never implemented, or pass while failing to test the behavior you actually care about. Ghost Test Catcher is Python-first in this release, normal existing-test review uses local analysis with `0 LLM calls`, and no paid API key is required for the VS Code workflow.
 
 ## Why Install It
 
@@ -16,15 +18,27 @@ It runs inside VS Code as a review tool for generated or suspicious tests: pick 
 
 ## Screenshots
 
-### Filterable Report Panel
+### Primary Workflow
 
-![Ghost Test Catcher report panel](media/screenshot-report.png)
+Open a Python test file and use the editor-title shield or status-bar action. No Command Palette memorization is needed for the normal review loop.
+
+![Ghost Test Catcher primary workflow with editor-title Analyze action and status bar](media/screenshot-primary-workflow.png)
 
 ### Inline Diagnostics And Quick Fixes
 
-![Ghost Test Catcher diagnostics](media/screenshot-diagnostics.png)
+Ghost Test Catcher flags risky tests directly in the editor and exposes Quick Fixes for evidence, missing symbols, static-only reruns, and the full report.
+
+![Ghost Test Catcher diagnostics and Quick Fixes](media/screenshot-diagnostics.png)
+
+### Filterable Report Panel
+
+The report explains why a test is reliable, needs review, or has ghost-test risk, with ETV, source evidence, and repeat-use actions.
+
+![Ghost Test Catcher report panel](media/screenshot-report.png)
 
 ### Native Testing Panel Integration
+
+Run analysis from VS Code's Testing panel and map grounded/risky results back to familiar test outcomes.
 
 ![Ghost Test Catcher Testing panel](media/screenshot-testing.png)
 
@@ -183,4 +197,4 @@ npm run package
 
 `npm run test:integration` uses `@vscode/test-electron` to download or reuse VS Code, open the fixture workspace in an Extension Development Host, run Doctor, analyze a Python test file, verify diagnostics, and refresh the Testing panel. Set `GHOST_TEST_CATCHER_TEST_PYTHON` when the desired Python executable is not simply `python`.
 
-The package command creates `ghost-test-catcher-0.2.9.vsix`, which can be installed in VS Code with `Extensions: Install from VSIX...`.
+The package command creates `ghost-test-catcher-0.2.10.vsix`, which can be installed in VS Code with `Extensions: Install from VSIX...`.

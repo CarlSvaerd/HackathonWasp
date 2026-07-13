@@ -2,7 +2,7 @@
   "name": "ghost-test-catcher",
   "displayName": "Ghost Test Catcher",
   "description": "Detect whether AI-generated Python tests are grounded in your actual source code.",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "publisher": "carl-svaerd",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -85,7 +85,7 @@
     "test:integration:ci": "node test/integration/runCi.js",
     "test:all": "node --test test/*.test.js && node test/integration/runTest.js",
     "prepare:python-bundle": "node ../../tools/prepare_vscode_python_bundle.js",
-    "package": "node ../../tools/prepare_vscode_python_bundle.js && vsce package --no-dependencies --out ghost-test-catcher-0.2.9.vsix"
+    "package": "node ../../tools/prepare_vscode_python_bundle.js && vsce package --no-dependencies --out ghost-test-catcher-0.2.10.vsix"
   },
   "devDependencies": {
     "@types/node": "^20.17.6",
